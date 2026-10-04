@@ -26,8 +26,9 @@ export class Hud {
     root.appendChild(this.meterCanvas);
   }
 
-  setGoal(title: string, goal: string, progress: string) {
-    this.goalEl.innerHTML = `<b>${title}</b><br>${goal}${progress ? `<br><span style="color:#ffd56a">${progress}</span>` : ""}`;
+  setGoal(title: string, goal: string, steps: { text: string; done: boolean }[], complete: boolean) {
+    const list = steps.map((s) => `<div style="text-align:left;margin:2px 0;color:${s.done ? "#9f9" : "#ffd56a"}">${s.done ? "✓" : "○"} ${s.text}</div>`).join("");
+    this.goalEl.innerHTML = `<b>${title}</b><br><span style="color:#ddd">${goal}</span>${list ? `<div style="margin-top:6px">${list}</div>` : ""}${complete ? `<div style="margin-top:6px;color:#9f9"><b>Level complete — press N for the next one</b></div>` : ""}`;
   }
   setReadout(text: string | null) {
     this.readoutEl.style.display = text ? "block" : "none";
@@ -43,8 +44,9 @@ export class Hud {
   lesson(text: string | null) { this.lessonEl.style.display = text ? "block" : "none"; if (text) this.lessonEl.textContent = text; }
 
   triangleText(t: Triangle | null, n: number): string {
-    if (!t) return `beacons: ${n}/3 placed (B)`;
-    return `triangle (beacons)\n angles  ${t.anglesDeg.map((a) => a.toFixed(1).padStart(6)).join(" ")}°\n sum     ${t.sumDeg.toFixed(2)}°\n sides   ${t.sidesM.map((s) => s.toFixed(2).padStart(6)).join(" ")} m`;
+    if (!t) return `beacons placed: ${n}/3 — press B at another spot`;
+    const hint = t.sumDeg < 179.9 ? "less than 180°: hyperbolic" : t.sumDeg > 180.1 ? "more than 180°: spherical" : "180°: flat";
+    return `Triangle between your beacons\n angles  ${t.anglesDeg.map((a) => a.toFixed(1).padStart(6)).join(" ")}°\n sum     ${t.sumDeg.toFixed(2)}°  (${hint})\n sides   ${t.sidesM.map((s) => s.toFixed(2).padStart(6)).join(" ")} m`;
   }
 
   drawMeter(samples: MeterSample[], flat: (d: number) => number, show: boolean) {

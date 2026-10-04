@@ -30,7 +30,10 @@ export interface LevelState {
   targetIrradiance: number; // W/m² at the level target (0 if none)
   submittedK: number | null;
   elapsed: number;
+  movedM: number; // distance walked, metres
 }
+
+export interface Step { text: string; done: boolean }
 
 export interface Level {
   id: string;
@@ -41,8 +44,8 @@ export interface Level {
   /** target position in metres (scene frame) for lighting puzzles */
   targetM?: [number, number, number];
   targetThreshold?: number;
-  /** returns progress text and done flag */
-  check(st: LevelState): { done: boolean; progress: string };
+  /** returns the checklist and the overall done flag */
+  check(st: LevelState): { done: boolean; steps: Step[] };
 }
 
 const ALL_TOOLS: ToolId[] = ["beacons", "meter", "laser", "compass", "map", "lamps", "flares", "flashlight", "slider", "topology"];
@@ -51,49 +54,72 @@ export const LEVELS: Level[] = [
   {
     id: "tutorial",
     title: "1 · A normal room",
-    goal: "Learn the tools: place 3 beacons (B) and read the triangle; walk away from a lamp (P) with the light meter (I) on; fire the laser (L).",
+    goal: "This room is ordinary flat space. Learn the four tools here, so you can tell when space stops being ordinary.",
     lesson: "In flat space a triangle's angles sum to 180° and light fades as 1/d². Remember what 'normal' looks like.",
     env: { k: 0, topology: "none", ambient: 0.35, fogSigma: 0.02, flashlight: true, lampBudget: -1, tools: ALL_TOOLS.filter((t) => t !== "slider" && t !== "topology"), hideCurvature: false, spawn: 0 },
     check(st) {
-      const a = st.beacons.length >= 3, b = st.meterSamples >= 6, c = st.laserUsed;
-      return { done: a && b && c, progress: `beacons ${a ? "✓" : `${st.beacons.length}/3`} · meter ${b ? "✓" : `${st.meterSamples}/6 samples`} · laser ${c ? "✓" : "–"}` };
+      const steps: Step[] = [
+        { text: "Walk around: W A S D to move, drag the mouse to look", done: st.movedM > 3 },
+        { text: `Press B at three different spots to drop beacons (${Math.min(3, st.beacons.length)}/3). They form a triangle; its angles appear on the left`, done: st.beacons.length >= 3 },
+        { text: `Press P to place a lamp, then I to switch on the light meter, and walk away from the lamp (${Math.min(6, st.meterSamples)}/6 readings)`, done: st.meterSamples >= 6 },
+        { text: "Press L to fire the laser: a straight line in this space", done: st.laserUsed },
+      ];
+      return { done: steps.every((x) => x.done), steps };
     },
   },
   {
     id: "lamps",
     title: "2 · The lamps are dying",
-    goal: "This space is hyperbolic. Light dies faster than 1/d². Light the marker (★) to 0.8 W/m² with at most 3 lamps (P).",
+    goal: "The space has changed. Light dies faster here than in the room you came from. Get the pink ★ marker bright enough to read by.",
     lesson: "Hyperbolic space has exponentially more room at distance: a lamp's light spreads over area 4π sinh²(d) instead of 4πd².",
     env: { k: -0.12, topology: "none", ambient: 0.06, fogSigma: 0.05, flashlight: false, lampBudget: 3, tools: ["beacons", "meter", "compass", "map", "lamps", "laser"], hideCurvature: false, spawn: 0 },
     targetM: [2.6, 1.3, -1.0],
     targetThreshold: 0.8,
-    check(st) { return { done: st.targetIrradiance >= 0.8, progress: `marker irradiance ${st.targetIrradiance.toFixed(2)} / 0.80 W/m² · lamps ${st.lampsPlaced}/3` }; },
+    check(st) {
+      const steps: Step[] = [
+        { text: "Try the light meter (I) next to a lamp (P) and watch how the dots fall below the grey 1/d² line", done: st.meterSamples >= 4 },
+        { text: `Light the ★ marker to 0.80 W/m² — now ${st.targetIrradiance.toFixed(2)} (lamps used ${st.lampsPlaced}/3; X removes them)`, done: st.targetIrradiance >= 0.8 },
+      ];
+      return { done: st.targetIrradiance >= 0.8, steps };
+    },
   },
   {
     id: "home",
     title: "3 · The light comes home",
-    goal: "This space is spherical. The marker (★) floats 9 m out over the void — unreachable, and too far for a lamp at the edge. Light it anyway: in S³ a lamp's light reconverges at the lamp's antipode, half-way round the universe (15.3 m here). Find the spot on the floor that is the marker's antipode and put a lamp there (P places one 1.5 m ahead of you).",
+    goal: "The ★ marker floats out over the void, far past the edge of the floor. No lamp at the edge can reach it. Yet there is a spot on this floor from which a lamp lights it perfectly.",
     lesson: "In S³ every geodesic from a point meets again at its antipode (distance πR). Irradiance Φ/(4π sin²(d/R)) blows up as d → πR: light 'comes home'. Walk straight away from the marker and keep going.",
     env: { k: 0.042, topology: "none", ambient: 0.05, fogSigma: 0.0, flashlight: true, lampBudget: 2, tools: ["beacons", "meter", "compass", "map", "lamps", "laser"], hideCurvature: false, spawn: 3 },
     targetM: [13.0, 1.6, -1.5],
     targetThreshold: 0.5,
-    check(st) { return { done: st.targetIrradiance >= 0.5, progress: `marker irradiance ${st.targetIrradiance.toFixed(2)} / 0.50 W/m² · lamps ${st.lampsPlaced}/2` }; },
+    check(st) {
+      const steps: Step[] = [
+        { text: "Turn your back on the ★ marker and walk straight away from it. Keep going.", done: st.movedM > 8 },
+        { text: `Where the whole sky seems to point at the marker, press P. Marker brightness: ${st.targetIrradiance.toFixed(2)} / 0.50 (lamps ${st.lampsPlaced}/2; X removes)`, done: st.targetIrradiance >= 0.5 },
+      ];
+      return { done: st.targetIrradiance >= 0.5, steps };
+    },
   },
   {
     id: "exam",
     title: "4 · Final exam: what shape is this space?",
-    goal: "The curvature is hidden and weak, and it is foggy. Measure it (triangles, light meter, compass loops), then dial your estimate on the slider and press Enter.",
+    goal: "Fog, darkness, and a curvature too weak to see. Measure it, then dial your estimate in the panel on the right and press Submit.",
     lesson: "Angle excess = κ·Area. Irradiance = Φ/(4π sn_κ(d)²). Holonomy after a loop = κ·enclosed area. Any one of them gives κ.",
     env: { k: 0, topology: "none", ambient: 0.15, fogSigma: 0.09, flashlight: true, lampBudget: -1, tools: ["beacons", "meter", "laser", "compass", "map", "lamps", "flashlight", "slider"], hideCurvature: true, spawn: 0 },
-    check(st) { return { done: st.submittedK !== null, progress: st.submittedK === null ? "measure, then submit with Enter" : "submitted" }; },
+    check(st) {
+      const steps: Step[] = [
+        { text: "Measure: beacons (B) for a triangle's angle sum, a lamp (P) + meter (I) for the falloff, a walked loop for the compass", done: st.beacons.length >= 3 || st.meterSamples >= 6 },
+        { text: "Dial your estimate in the panel on the right and press Submit", done: st.submittedK !== null },
+      ];
+      return { done: st.submittedK !== null, steps };
+    },
   },
   {
     id: "sandbox",
     title: "Sandbox",
-    goal: "Everything unlocked: curvature slider, topology gallery, all tools. Lesson cards appear when you pick a space.",
+    goal: "Bend space with the slider on the right, or pick a closed universe. Every tool is unlocked: B beacons · P lamp · I light meter · L laser · T flare · F flashlight · M map · C compass.",
     lesson: "",
     env: { k: 0, topology: "none", ambient: 0.25, fogSigma: 0.04, flashlight: true, lampBudget: -1, tools: ALL_TOOLS, hideCurvature: false, spawn: 0 },
-    check() { return { done: false, progress: "" }; },
+    check() { return { done: false, steps: [] }; },
   },
 ];
 

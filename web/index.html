@@ -7,28 +7,82 @@
     <style>
       html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: ui-monospace, Menlo, monospace; }
       canvas { display: block; width: 100vw; height: 100vh; }
-      #hud { position: fixed; left: 12px; top: 12px; color: #ddd; font-size: 12px; line-height: 1.5; background: rgba(0,0,0,.55); padding: 8px 10px; border-radius: 6px; pointer-events: none; white-space: pre; }
-      #panel { position: fixed; right: 12px; top: 12px; color: #ddd; font-size: 12px; background: rgba(0,0,0,.55); padding: 8px 10px; border-radius: 6px; width: 260px; }
+      #hud { position: fixed; left: 12px; top: 12px; color: #ddd; font-size: 12px; line-height: 1.5; background: rgba(0,0,0,.55); padding: 8px 10px; border-radius: 6px; pointer-events: none; white-space: pre; display: none; }
+      #panel { position: fixed; right: 12px; top: 56px; color: #ddd; font-size: 12px; background: rgba(0,0,0,.7); padding: 8px 10px; border-radius: 6px; width: 260px; display: none; max-height: calc(100vh - 80px); overflow: auto; }
       #panel label { display: block; margin: 4px 0; }
       #panel input[type=range] { width: 150px; vertical-align: middle; }
       #status { position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%); color: #fff; font-size: 16px; }
       .big { font-size: 14px; color: #fff; }
+      #devToggle { position: fixed; right: 12px; top: 12px; background: rgba(0,0,0,.55); color: #aaa; border: 1px solid #333; border-radius: 6px; padding: 4px 9px; cursor: pointer; font-size: 13px; z-index: 5; }
+      #playerPanel { position: fixed; right: 12px; top: 56px; color: #eee; font-size: 13px; background: rgba(10,12,20,.8); padding: 12px 14px; border-radius: 10px; width: 300px; display: none; border: 1px solid #2a3050; }
+      #playerPanel label { display: block; margin: 6px 0; }
+      #playerPanel input[type=range] { width: 100%; }
+      .pbtn { background: #2a3050; color: #eee; border: 0; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 13px; width: 100%; margin: 4px 0; }
+      .pbtn:hover { background: #3a4270; }
+      #estimate { position: fixed; right: 12px; top: 56px; width: 320px; color: #eee; font-size: 13px; background: rgba(20,16,10,.88); padding: 14px; border-radius: 10px; display: none; border: 1px solid #ffd56a; }
+      #estimate input[type=range] { width: 100%; }
+      .scaleLabels { display: flex; justify-content: space-between; color: #aaa; font-size: 11px; }
+      #title { position: fixed; inset: 0; background: radial-gradient(ellipse at 50% 40%, rgba(30,36,70,.95), rgba(0,0,0,.97)); color: #eee; display: flex; align-items: center; justify-content: center; z-index: 30; }
+      #title .box { max-width: 720px; text-align: center; padding: 24px; }
+      #title h1 { font-size: 40px; margin: 0; letter-spacing: 1px; }
+      #title h2 { font-size: 16px; font-weight: normal; color: #bcd; margin: 6px 0 26px; }
+      #title .modes { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+      #title .mode { background: #141826; border: 1px solid #2a3050; border-radius: 12px; padding: 18px; width: 200px; cursor: pointer; text-align: left; }
+      #title .mode:hover { border-color: #ffd56a; background: #1a2036; }
+      #title .mode b { display: block; font-size: 15px; margin-bottom: 6px; color: #fff; }
+      #title .mode span { font-size: 12px; color: #aab; line-height: 1.4; }
+      #title .foot { margin-top: 22px; font-size: 12px; color: #889; line-height: 1.6; }
     </style>
   </head>
   <body>
     <canvas id="gl"></canvas>
     <canvas id="overlay" style="position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none"></canvas>
     <div id="status">loading…</div>
+
+    <div id="title">
+      <div class="box">
+        <h1>CRaFT · Surveyor</h1>
+        <h2>You have been dropped into a universe of unknown shape. Work it out using only light.</h2>
+        <div class="modes">
+          <div class="mode" data-mode="play"><b>▶ Play</b><span>Four short levels. Each one teaches a tool, then uses it: beacons, light meter, laser, compass. Ends with the exam.</span></div>
+          <div class="mode" data-mode="exam"><b>? Guess the curvature</b><span>Straight to the exam: a foggy space with hidden curvature. Measure it, dial your estimate, submit, get a score.</span></div>
+          <div class="mode" data-mode="sandbox"><b>∞ Sandbox</b><span>Bend space with a slider from hyperbolic to spherical, or pick a closed universe (3-torus, Poincaré dodecahedral space…).</span></div>
+        </div>
+        <div class="foot">Move with <b>W A S D</b> · look by dragging the mouse · <b>Esc</b> for help at any time<br>A captured scene ray traced along exact geodesics of hyperbolic, flat and spherical space.</div>
+      </div>
+    </div>
+
+    <button id="devToggle" title="developer panel and stats (`)">⚙</button>
     <div id="hud"></div>
+
+    <div id="playerPanel">
+      <label class="big">Curvature of space <span id="curvWord" style="float:right;color:#ffd56a"></span></label>
+      <input id="curv" type="range" min="-1" max="1" step="0.001" value="0" />
+      <div class="scaleLabels"><span>◀ hyperbolic</span><span>flat</span><span>spherical ▶</span></div>
+      <div id="curvV" style="font-size:11px;color:#aaa;margin:2px 0 8px"></div>
+      <button id="galleryBtn" class="pbtn">Choose a closed universe (G)</button>
+      <button id="pickLevelBtn" class="pbtn">Levels / main menu</button>
+      <label><input id="lighting" type="checkbox" checked /> lighting &amp; flashlight</label>
+      <label><input id="audio" type="checkbox" /> sound (lamps hum, flares crackle)</label>
+    </div>
+
+    <div id="estimate">
+      <div style="font-size:14px;color:#ffd56a;margin-bottom:6px"><b>Your estimate of the curvature</b></div>
+      <div style="color:#bbb;font-size:12px;margin-bottom:8px">Negative = hyperbolic (triangles under 180°, light fades faster than 1/d²). Positive = spherical (over 180°, light fades slower). Zero = flat.</div>
+      <input id="estSlider" type="range" min="-1" max="1" step="0.001" value="0" />
+      <div class="scaleLabels"><span>◀ hyperbolic</span><span>flat</span><span>spherical ▶</span></div>
+      <div id="estV" style="margin:8px 0;font-size:13px">k = 0</div>
+      <button id="estSubmit" class="pbtn" style="background:#8a6a1a">Submit guess (Enter)</button>
+    </div>
+
     <div id="panel">
-      <label class="big">curvature k <input id="curv" type="range" min="-1" max="1" step="0.001" value="0" /> <span id="curvV">0</span></label>
+      <div class="big" style="margin-bottom:6px">developer panel</div>
       <label><input id="mode" type="checkbox" checked /> curved renderer (unchecked = Phase 1 flat reference)</label>
       <label>quality <select id="quality"><option value="auto" selected>auto (target 30 fps)</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
       <label>scale <input id="scale" type="range" min="0.25" max="1" step="0.05" value="1" /> <span id="scaleV">1.00</span></label>
       <label>FOV <input id="fov" type="range" min="50" max="100" step="1" value="70" /> <span id="fovV">70°</span></label>
       <label>mouse <input id="sens" type="range" min="0.5" max="3" step="0.1" value="1" /></label>
       <label><input id="tints" type="checkbox" checked /> tint walls by face pair</label>
-      <button id="galleryBtn" style="margin:4px 0;background:#2a3050;color:#eee;border:0;padding:5px 10px;border-radius:6px;cursor:pointer">space gallery (G)</button>
       <label class="big">level <select id="level"></select></label>
       <label>space <select id="topo"></select></label>
       <label>camera <select id="cams"></select></label>
@@ -36,11 +90,8 @@
       <label><input id="repopix" type="checkbox" /> repo pixel grid (edges at ±1)</label>
       <label><input id="floor" type="checkbox" checked /> stay on the eye plane (no Q/E)</label>
       <label><input id="collide" type="checkbox" checked /> collisions</label>
-      <label><input id="lighting" type="checkbox" checked /> lighting (P lamp · T flare · F flashlight)</label>
       <label>ambient <input id="ambient" type="range" min="0" max="1" step="0.01" value="0.25" /></label>
       <label>fog σ (1/m) <input id="fog" type="range" min="0" max="0.2" step="0.005" value="0.04" /></label>
-      <label><input id="audio" type="checkbox" /> audio (lamps hum, flares crackle)</label>
-      <div>WASD move · drag to look · shift = fast</div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

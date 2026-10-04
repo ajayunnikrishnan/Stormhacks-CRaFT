@@ -28,6 +28,8 @@ const collideEl = $<HTMLInputElement>("collide");
 const lightEl = $<HTMLInputElement>("lighting"), ambientEl = $<HTMLInputElement>("ambient"), fogEl = $<HTMLInputElement>("fog"), audioEl = $<HTMLInputElement>("audio");
 const overlayCanvas = $<HTMLCanvasElement>("overlay");
 const qualityEl = $<HTMLSelectElement>("quality"), fovEl = $<HTMLInputElement>("fov"), fovV = $("fovV"), sensEl = $<HTMLInputElement>("sens"), tintsEl = $<HTMLInputElement>("tints");
+const titleEl = $("title"), devToggle = $<HTMLButtonElement>("devToggle"), panelEl = $("panel"), playerPanel = $("playerPanel"), curvWord = $("curvWord");
+const estimateEl = $("estimate"), estSlider = $<HTMLInputElement>("estSlider"), estV = $("estV"), estSubmit = $<HTMLButtonElement>("estSubmit");
 
 const params = new URLSearchParams(location.search);
 const sceneUrl = params.get("scene") ?? "scenes/synth_open/scene.json";
@@ -65,7 +67,7 @@ async function main() {
   let laser: { o: V4; v: V4; length: number } | null = null;
   const beacons: V4[] = [];
   let level: Level = LEVELS[LEVELS.length - 1];
-  let levelState: LevelState = { beacons, meterSamples: 0, lampsPlaced: 0, laserUsed: false, compassLoopDeg: 0, targetIrradiance: 0, submittedK: null, elapsed: 0 };
+  let levelState: LevelState = { beacons, meterSamples: 0, lampsPlaced: 0, laserUsed: false, compassLoopDeg: 0, targetIrradiance: 0, submittedK: null, elapsed: 0, movedM: 0 };
   let examK = 0; // hidden true curvature in the exam
   let examReveal: { t0: number; from: number; score: number; errPct: number } | null = null;
   let paused = false;
@@ -122,7 +124,10 @@ async function main() {
     for (const l of lights.list) l.pos = remap(l.pos, before, after);
     for (let i = 0; i < beacons.length; i++) beacons[i] = remap(beacons[i], before, after);
     if (level.targetM) targetWorld = toModel(level.targetM);
-    if (!level.env.hideCurvature) curvV.textContent = `${k.toExponential(2)} 1/m²  (κ=${after.kappa}${after.kappa ? `, s=${after.scale.toFixed(3)}` : ""})`;
+    if (!level.env.hideCurvature) {
+      curvV.textContent = `k = ${k.toExponential(2)} per m²  (κ=${after.kappa}${after.kappa ? `, radius of curvature ${(1 / after.scale).toFixed(1)} m` : ""})`;
+      curvWord.textContent = after.kappa < 0 ? "hyperbolic" : after.kappa > 0 ? "spherical" : "flat";
+    }
     if (moveSlider) curvEl.value = String(kToSlider(k));
   };
   const setTopology = (id: DomainId) => {
@@ -170,13 +175,13 @@ async function main() {
 
   const startLevel = (lv: Level) => {
     level = lv;
-    levelState = { beacons, meterSamples: 0, lampsPlaced: 0, laserUsed: false, compassLoopDeg: 0, targetIrradiance: 0, submittedK: null, elapsed: 0 };
+    levelState = { beacons, meterSamples: 0, lampsPlaced: 0, laserUsed: false, compassLoopDeg: 0, targetIrradiance: 0, submittedK: null, elapsed: 0, movedM: 0 };
     beacons.length = 0; clearLights(); meter.clear(); meter.active = false; laser = null; examReveal = null;
     const env = lv.env;
     setTopology(env.topology);
     examK = lv.id === "exam" ? examCurvature(Date.now() & 0xffff) : 0;
     setK(lv.id === "exam" ? examK : env.k, lv.id !== "exam");
-    if (lv.id === "exam") { curvEl.value = "0"; curvV.textContent = "? (your estimate: 0)"; }
+    if (lv.id === "exam") { curvV.textContent = "hidden"; curvWord.textContent = "?"; }
     ambientEl.value = String(env.ambient); fogEl.value = String(env.fogSigma);
     flashOn = env.flashlight; lightEl.checked = true;
     curvEl.disabled = !has("slider") || domain !== null;
@@ -187,7 +192,23 @@ async function main() {
     gameHud.lesson(lv.lesson || null);
     gameHud.banner(`<b>${lv.title}</b><br><span style="font-size:14px">${lv.goal}</span>`, 6000);
     levelEl.value = lv.id;
+    // player-facing panels: sandbox gets the curvature/gallery panel, the exam gets the estimate panel
+    playerPanel.style.display = lv.id === "sandbox" ? "block" : "none";
+    estimateEl.style.display = lv.id === "exam" ? "block" : "none";
+    if (lv.id === "exam") { estSlider.value = "0"; estV.textContent = "k = 0 (flat)"; estSubmit.disabled = false; estSubmit.textContent = "Submit guess (Enter)"; }
   };
+  const submitExam = () => {
+    if (level.id !== "exam" || levelState.submittedK !== null) return;
+    const guess = sliderToK(Number(estSlider.value));
+    levelState.submittedK = guess;
+    const { score, errorPct } = examScore(examK, guess);
+    examReveal = { t0: performance.now(), from: examK, score, errPct: errorPct };
+    estSubmit.disabled = true; estSubmit.textContent = `score ${score}/100`;
+    estV.textContent = `true k = ${examK.toExponential(2)} · yours ${guess.toExponential(2)}`;
+    gameHud.banner(`<b>True curvature: ${examK.toExponential(2)} per m² (${examK < 0 ? "hyperbolic" : "spherical"})</b><br>your estimate ${guess.toExponential(2)} · error ${errorPct.toFixed(0)}% · <b>score ${score}/100</b><br><span style="font-size:13px">watch the space flatten and bend back… (R to retry with a new hidden value)</span>`, 9000);
+  };
+  estSlider.addEventListener("input", () => { const g = sliderToK(Number(estSlider.value)); estV.textContent = `k = ${g.toExponential(2)} per m² (${g < -1e-9 ? "hyperbolic" : g > 1e-9 ? "spherical" : "flat"})`; });
+  estSubmit.addEventListener("click", submitExam);
 
   // ---------------------------------------------------------------- UI wiring
   camsEl.innerHTML = cameras.map((c, i) => `<option value="${i}">${c.name}</option>`).join("") || "<option>free</option>";
@@ -195,15 +216,15 @@ async function main() {
   levelEl.innerHTML = LEVELS.map((l) => `<option value="${l.id}">${l.title}</option>`).join("");
   camsEl.addEventListener("change", () => { const c = cameras[Number(camsEl.value)]; if (c) applyCamera(c); });
   scaleEl.addEventListener("input", () => (scaleV.textContent = Number(scaleEl.value).toFixed(2)));
-  curvEl.addEventListener("input", () => {
-    if (level.id === "exam") { curvV.textContent = `? (your estimate: ${sliderToK(Number(curvEl.value)).toExponential(2)} 1/m²)`; return; }
-    setK(sliderToK(Number(curvEl.value)), false);
-  });
+  curvEl.addEventListener("input", () => setK(sliderToK(Number(curvEl.value)), false));
   topoEl.addEventListener("change", () => setTopology(topoEl.value as DomainId));
   levelEl.addEventListener("change", () => startLevel(LEVELS.find((l) => l.id === levelEl.value)!));
   isoCam.moveHook = (d) => { player.tryMove(isoCam, renderer.curved, d, curvatureParams(k).scale); };
   isoCam.yawHook = (R) => player.onYaw(R);
 
+  let toggleDev: () => void = () => {};
+  let showTitle: () => void = () => {};
+  let chooseMode: (mode: string) => void = () => {};
   const controlsHtml = `<h3 style="margin:0 0 8px">CRaFT · Surveyor — paused</h3>
     <b>Move</b> WASD (shift = run) · <b>Look</b> drag · <b>Esc</b> resume<br>
     <b>B</b> beacon (3 → triangle) · <b>I</b> light meter · <b>L</b> laser · <b>M</b> map · <b>C</b> compass<br>
@@ -215,7 +236,13 @@ async function main() {
 
   window.addEventListener("keydown", (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
-    if (e.code === "Escape") { if (gallery.visible) { gallery.hide(); return; } paused = !paused; gameHud.showMenu(paused ? controlsHtml : null); return; }
+    if (e.code === "Escape") {
+      if (gallery.visible) { gallery.hide(); return; }
+      if (titleEl.style.display !== "none") { titleEl.style.display = "none"; paused = false; return; }
+      paused = !paused; gameHud.showMenu(paused ? controlsHtml + `<br><button id="menuTitle" class="pbtn" style="width:auto">Back to the main menu</button>` : null);
+      if (paused) document.getElementById("menuTitle")?.addEventListener("click", () => { gameHud.showMenu(null); showTitle(); });
+      return;
+    }
     if (e.code === "KeyG" && has("topology")) { if (gallery.visible) gallery.hide(); else openGallery(); return; }
     if (paused || gallery.visible) return;
     const p = curvatureParams(k);
@@ -243,14 +270,8 @@ async function main() {
     if (e.code === "KeyX") { clearLights(); levelState.lampsPlaced = 0; }
     if (e.code === "KeyR") startLevel(level);
     if (e.code === "KeyN") { const i = LEVELS.indexOf(level); startLevel(LEVELS[(i + 1) % LEVELS.length]); }
-    if (e.code === "Enter" && level.id === "exam" && levelState.submittedK === null) {
-      const guess = sliderToK(Number(curvEl.value));
-      levelState.submittedK = guess;
-      const { score, errorPct } = examScore(examK, guess);
-      examReveal = { t0: performance.now(), from: examK, score, errPct: errorPct };
-      curvV.textContent = `true k = ${examK.toExponential(2)} · yours ${guess.toExponential(2)}`;
-      gameHud.banner(`<b>True curvature: ${examK.toExponential(2)} 1/m² (${examK < 0 ? "hyperbolic" : "spherical"})</b><br>your estimate ${guess.toExponential(2)} · error ${errorPct.toFixed(0)}% · <b>score ${score}/100</b><br><span style="font-size:13px">watch the space flatten and bend back…</span>`, 9000);
-    }
+    if (e.code === "Enter") submitExam();
+    if (e.code === "Backquote") toggleDev();
   });
   canvas.addEventListener("pointerdown", () => { if (audioEl.checked) audio.ensure(); });
 
@@ -269,6 +290,9 @@ async function main() {
     renderLit: (w: number, h: number) => { lighting.camFwdWorld = apply(isoCam.invW(), v4(0, 0, 0, -1)); return Array.from(renderer.renderLitToArray(isoState(w / h), opts(), lighting, w, h)); },
     setK, setTopology, startLevel: (id: string) => startLevel(LEVELS.find((l) => l.id === id)!),
     levelState: () => ({ ...levelState, beacons: levelState.beacons.length, progress: level.check(levelState), examK, level: level.id }),
+    chooseMode: (m: string) => chooseMode(m),
+    submitExam: () => submitExam(),
+    setEstimate: (u: number) => { estSlider.value = String(u); estSlider.dispatchEvent(new Event("input")); },
     pressKey: (code: string) => window.dispatchEvent(new KeyboardEvent("keydown", { code })),
     setSlider: (u: number) => { curvEl.value = String(u); curvEl.dispatchEvent(new Event("input")); },
     setFog: (m: number, hops?: number) => { renderer.fogDistanceM = m; if (hops) renderer.maxHops = hops; },
@@ -298,12 +322,25 @@ async function main() {
   };
 
   // ---------------------------------------------------------------- start
-  startLevel(LEVELS.find((l) => l.id === (params.get("level") ?? "sandbox")) ?? LEVELS[LEVELS.length - 1]);
   status.remove();
   applyQuality();
+  let devVisible = false;
+  toggleDev = () => { devVisible = !devVisible; panelEl.style.display = devVisible ? "block" : "none"; hud.style.display = devVisible ? "block" : "none"; };
+  devToggle.addEventListener("click", toggleDev);
+  showTitle = () => { titleEl.style.display = "flex"; paused = true; };
+  chooseMode = (mode: string) => {
+    titleEl.style.display = "none"; paused = false; gameHud.showMenu(null);
+    startLevel(LEVELS.find((l) => l.id === (mode === "play" ? "tutorial" : mode))!);
+  };
+  titleEl.querySelectorAll<HTMLElement>(".mode").forEach((m) => m.addEventListener("click", () => chooseMode(m.dataset.mode!)));
+  $("pickLevelBtn").addEventListener("click", showTitle);
+  // deep links (?level=…) skip the title screen; otherwise show it over the sandbox
+  const deep = params.get("level");
+  if (deep) chooseMode(deep === "tutorial" ? "play" : deep); else { startLevel(LEVELS[LEVELS.length - 1]); showTitle(); }
 
   let last = performance.now();
   let fpsAcc = 0, fpsN = 0, fps = 0, hopsCrossed = 0, lastMeterLamp = -1;
+  let lastPosM: Float64Array | null = null;
   function loop(now: number) {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
@@ -321,6 +358,7 @@ async function main() {
         for (const id of lights.update(p.kappa, dt, (x) => player.isSolid(renderer.curved, x))) audio.remove(id);
         for (const l of lights.list) { const srcPos = audio.sources.get(l.id); if (srcPos) srcPos.pos = l.pos; }
         levelState.elapsed += dt;
+        { const pm = isoCam.physicalPos(p.kappa, p.scale, renderer.centre); if (lastPosM) levelState.movedM += Math.hypot(pm[0] - lastPosM[0], pm[2] - lastPosM[2]) < 1 ? Math.hypot(pm[0] - lastPosM[0], pm[2] - lastPosM[2]) : 0; lastPosM = pm; }
         // exam reveal: morph the rendering from the true curvature to flat and back over 6 s
         if (examReveal) {
           const u = (performance.now() - examReveal.t0) / 6000;
@@ -344,7 +382,7 @@ async function main() {
         levelState.targetIrradiance = E; // model-unit irradiance × s² = W/m²
       }
       const prog = level.check(levelState);
-      gameHud.setGoal(level.title, level.goal, prog.progress + (prog.done ? "  —  ✓ complete! press N for the next level" : ""));
+      gameHud.setGoal(level.title, level.goal, prog.steps, prog.done);
       const tri = beacons.length === 3 ? triangle(p.kappa, p.scale, beacons[0], beacons[1], beacons[2]) : null;
       gameHud.setReadout(has("beacons") && beacons.length ? gameHud.triangleText(tri, beacons.length) : null);
       gameHud.drawMeter(meter.samples, (d) => meter.flatCurve(d), meter.active);
