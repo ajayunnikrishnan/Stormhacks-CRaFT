@@ -192,7 +192,29 @@ At 960×540: 29–40 ms. Sky rays dominate (they run to the fog); a closed scene
 | walk + shadows + shading, k = −0.05 | 26.2 |
 Baked-output parity (curved κ=0 vs flat) after the G-buffer refactor: 80.8 dB.
 
-## Next — Phase 7: gameplay (beacons + angle HUD, light meter, levels 1–4, sandbox, slider).
+## Phase 7 — Gameplay — DONE
+- `game/tools.ts`: beacon triangle (interior angles via Eq. 5 tangents, geodesic sides in metres;
+  no area shown), light meter (scalar irradiance Φ/(4π sn²d) vs distance, flat 1/d² reference
+  through the first sample), numeric Gauss–Bonnet area integration (for tests/writeup).
+- `game/levels.ts`: 1 flat tutorial (beacons, meter, laser) · 2 "The lamps are dying" (H³,
+  k = −0.12, 3 lamps, light the marker to 0.8 W/m²) · 3 "The light comes home" (S³, k = 0.042,
+  marker 9 m out over the void; only a lamp near its antipode lights it) · 4 final exam (hidden
+  weak k ∈ ±[0.006, 0.036], fog, submit on the slider with Enter → true k, error %, score, and a
+  6 s morph flat-and-back) · sandbox with lesson cards per space. Tools are gated per level.
+- `ui/hud.ts`: goal banner with live progress, triangle readout, meter plot, level banners,
+  Esc pause menu with controls. In-view markers (beacons A/B/C, target ★, lamps) in the overlay.
+- Player: floor support required (no walking off the platform); probe band covers the O(κx²)
+  variation of the floor's geodesic depth.
+
+### Tests
+| test | result |
+|---|---|
+| flat triangle 3-4-5: angles 90/…, sum 180°, sides exact | pass |
+| Gauss–Bonnet: numerically integrated area × κ == angle excess, H³ and S³, 3 sizes | pass, < 2e-3 |
+| light meter ordering: H³ below 1/d², S³ above, E³ exact | pass |
+| in-browser level flow: tutorial completes; exam with a 10 %-off guess scores 90; level 3: lamp at edge 0.026, at antipode 2.6e4, 0.5 m off 2.6, 1.5 m off 0.30 W/m² | pass |
+
+## Next — Phase 8: polish (tints, topology gallery, quality presets, comfort), then Phase 9 docs.
 
 ## Known issues
 - Curved walker ~1.3× slower than the flat shader on the E³ path (generic 4D math); S³ ~2×.

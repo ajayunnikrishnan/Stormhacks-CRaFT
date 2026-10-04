@@ -39,6 +39,9 @@ export class Player {
   compass = new Float64Array([0, 0, -1]);
   radiusM = 0.25; // collision radius, metres
   collisions = true;
+  /** require dense foam under the feet (eye plane is 1.6 m above the floor): no walking off the platform */
+  needFloor = true;
+  eyeHeightM = 1.6;
   private info: CellInfo;
 
   constructor(readonly scene: SceneArrays, info?: CellInfo) {
@@ -94,6 +97,17 @@ export class Player {
       for (const o of [[r, 0, 0], [-r, 0, 0], [0, 0, r], [0, 0, -r], [0, -0.6 * r, 0]]) {
         const p = apply(invWb, bodyPoint(cam.kappa, [d[0] + o[0], d[1] + o[1], d[2] + o[2]]));
         if (this.isSolid(sites, p)) return false;
+      }
+      if (this.needFloor) {
+        // Probe a band of depths under the destination. The floor is embedded in exp-map
+        // coordinates, so away from the origin its geodesic depth below the eye plane differs
+        // from the nominal eye height by O(κ·x²) (±10 % here); the band covers that.
+        let support = false;
+        for (let depth = this.eyeHeightM - 0.3; depth <= this.eyeHeightM + 0.2; depth += 0.03) {
+          const p = apply(invWb, bodyPoint(cam.kappa, [d[0], d[1] - depth * scale, d[2]]));
+          if (this.isSolid(sites, p)) { support = true; break; }
+        }
+        if (!support) return false;
       }
       cam.moveBy(d);
       return true;

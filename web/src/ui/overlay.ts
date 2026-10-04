@@ -26,6 +26,8 @@ export interface OverlayState {
   tanHalfFov: [number, number];
   laser: { o: V4; v: V4; length: number } | null; // world coords
   beacons: V4[];
+  target: V4 | null;
+  lights: V4[];
 }
 
 export class Overlay {
@@ -45,6 +47,7 @@ export class Overlay {
     const W = this.canvas.width, H = this.canvas.height;
     ctx.clearRect(0, 0, W, H);
     if (st.laser) this.drawLaser(st, W, H);
+    this.drawMarkers(st, W, H);
     if (this.showCompass) this.drawCompass(st, W, H);
     if (this.showMap) this.drawMap(st, W, H);
   }
@@ -58,6 +61,31 @@ export class Overlay {
     if (dz <= 1e-6) return null;
     const px = (c[1] / dz) / st.tanHalfFov[0], py = (c[2] / dz) / st.tanHalfFov[1];
     return [(px * 0.5 + 0.5) * W, (0.5 - py * 0.5) * H];
+  }
+
+  /** In-view markers: beacons (diamonds), the level target (star), lamps (small rings). */
+  private drawMarkers(st: OverlayState, W: number, H: number) {
+    const { ctx } = this;
+    ctx.lineWidth = 1.5;
+    st.beacons.forEach((b, i) => {
+      const p = this.project(st, b, W, H); if (!p) return;
+      ctx.strokeStyle = "rgba(255,220,80,0.95)"; ctx.fillStyle = "rgba(255,220,80,0.25)";
+      ctx.beginPath(); ctx.moveTo(p[0], p[1] - 9); ctx.lineTo(p[0] + 7, p[1]); ctx.lineTo(p[0], p[1] + 9); ctx.lineTo(p[0] - 7, p[1]); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#ffd"; ctx.font = "11px ui-monospace, monospace"; ctx.textAlign = "left"; ctx.fillText(["A", "B", "C"][i], p[0] + 9, p[1] + 4);
+    });
+    if (st.target) {
+      const p = this.project(st, st.target, W, H);
+      if (p) {
+        ctx.strokeStyle = "rgba(255,120,200,0.95)"; ctx.fillStyle = "rgba(255,120,200,0.3)";
+        ctx.beginPath();
+        for (let i = 0; i < 10; i++) { const r = i % 2 ? 5 : 12; const a = -Math.PI / 2 + (i * Math.PI) / 5; const x = p[0] + r * Math.cos(a), y = p[1] + r * Math.sin(a); if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+    }
+    for (const l of st.lights) {
+      const p = this.project(st, l, W, H); if (!p) continue;
+      ctx.strokeStyle = "rgba(255,240,180,0.6)"; ctx.beginPath(); ctx.arc(p[0], p[1], 5, 0, Math.PI * 2); ctx.stroke();
+    }
   }
 
   private drawLaser(st: OverlayState, W: number, H: number) {
