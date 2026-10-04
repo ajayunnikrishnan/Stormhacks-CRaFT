@@ -54,7 +54,9 @@ async function main() {
   isoCam.attach(canvas);
   const cameras: RepoCamera[] = scene.manifest.cameras ?? [];
   const player = new Player(scene);
-  player.floorY = scene.manifest.bbox_min[1];
+  // walkable region: an explicit walk_bbox (large outdoor captures) or the whole scene
+  const walk = scene.manifest.walk_bbox ?? [scene.manifest.bbox_min, scene.manifest.bbox_max];
+  player.floorY = walk[0][1];
   player.centre = renderer.centre;
   const map = new MapInset(mapCanvas);
   const lights = new Lights();
@@ -70,7 +72,7 @@ async function main() {
   const kNeg = scene.manifest.curved?.k_neg ?? kPos;
   const sliderToK = (u: number) => (u < 0 ? -u * u * kNeg : u * u * kPos);
   const kToSlider = (kk: number) => Math.max(-1, Math.min(1, kk < 0 ? -Math.sqrt(-kk / kNeg) : Math.sqrt(kk / kPos)));
-  const bb0 = scene.manifest.bbox_min, bb1 = scene.manifest.bbox_max;
+  const bb0 = walk[0], bb1 = walk[1];
   const flatHalf: [number, number, number] = [(bb1[0] - bb0[0]) / 2, (bb1[1] - bb0[1]) / 2, (bb1[2] - bb0[2]) / 2];
   const horizExtent = Math.max(flatHalf[0], flatHalf[2]);
   // Box universes must CONTAIN the floor slab: the domain is centred on the eye plane (model origin,
@@ -334,7 +336,7 @@ async function main() {
       lighting.camFwdWorld = apply(isoCam.invW(), v4(0, 0, 0, -1));
       renderer.frameCurved(isoState(W / H), opts(), W, H, Number(scaleEl.value), lighting);
       const invWb = inverse(p.kappa, isoCam.Wb);
-      const sh = scene.manifest.bbox_max.map((v, i) => ((v - scene.manifest.bbox_min[i]) / 2) * p.scale) as [number, number, number];
+      const sh = flatHalf.map((v) => v * p.scale) as [number, number, number];
       map.draw({ kappa: p.kappa, scale: p.scale, W: isoCam.W(), camWorld: isoCam.worldPos(), headingWorld: apply(invWb, v4(0, 0, 0, -1)), domain: quiz && quizResultEl.style.display !== "flex" ? null : domain, sceneHalfModel: sh });
     } else {
       flyCam.update(dt);

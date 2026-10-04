@@ -34,13 +34,20 @@ from powerfoam.scene import PowerfoamScene  # noqa: E402
 from benchmark import add_steiner_points, build_power_adjacency, get_steiner_points  # noqa: E402
 
 
-def main(args, config_path, out_dir, n_cams, split):
+def main(args, config_path, out_dir, n_cams, split, dump_cameras=False):
     wp.init()
     checkpoint = config_path.replace("/config.yaml", "")
     os.makedirs(out_dir, exist_ok=True)
 
     data = DataHandler(args)
     data.reload(split, downsample=args.downsample[-1])
+    if dump_cameras:
+        # every camera of the split, no rendering: tools/canonicalize_scene.py estimates the up axis,
+        # floor and metric scale from these
+        allc = [{"name": f"cam_{i:03d}", "eye": c.eye.tolist(), "right": c.right.tolist(), "up": c.up.tolist(), "width": int(c.width), "height": int(c.height)} for i, c in enumerate(data.cameras)]
+        with open(os.path.join(out_dir, "cameras_all.json"), "w") as f:
+            json.dump(allc, f, indent=1)
+        print(f"dumped {len(allc)} cameras ({split}) to {out_dir}/cameras_all.json")
 
     model = PowerfoamScene(args, attr_dtype="half")
     model.initialize_from_dataset(data, device="cuda")
@@ -104,5 +111,6 @@ if __name__ == "__main__":
     parser.add_argument("--out", default="refs")
     parser.add_argument("--n", type=int, default=4, help="number of cameras to render")
     parser.add_argument("--split", default="test", choices=["test", "train", "all"])
+    parser.add_argument("--dump-cameras", action="store_true", help="also write cameras_all.json with every camera of the split")
     a = parser.parse_args()
-    main(get_params(a), a.config, a.out, a.n, a.split)
+    main(get_params(a), a.config, a.out, a.n, a.split, a.dump_cameras)

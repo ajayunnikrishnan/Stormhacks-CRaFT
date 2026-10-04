@@ -15,6 +15,7 @@ export interface SceneManifest {
   sections: Record<string, Section>;
   info: Record<string, unknown>;
   cameras?: RepoCamera[];
+  walk_bbox?: [number[], number[]]; // walkable region in metres (outdoor scenes); floor = walk_bbox[0][1]
   curved?: { centre: number[]; k_max: number; k_neg?: number; scene_extent: number; n_edges_directed_union: number; sweep: Record<string, unknown> };
 }
 
