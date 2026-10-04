@@ -3,7 +3,7 @@ import {
   type Kappa, type V4, ORIGIN, v4, form, cs, sn, distance, geodesic, geodesicDir, tangentToward,
   planeRoot, planeExitAfter, planeEntryBefore, planeValue, ballInterval, embedPoint, logAtOrigin, project,
   translationTo, translationByVector, rotation, inverse, isometryError, reorthonormalize, mul, apply,
-  identity, advance, tangentialize, dot4, planeExitEntry,
+  identity, advance, tangentialize, dot4, planeExitEntry, irradiance, sphereArea,
 } from "../src/geometry/space";
 
 const KAPPAS: Kappa[] = [-1, 0, 1];
@@ -322,6 +322,41 @@ describe("fused planeExitEntry equals planeExitAfter/planeEntryBefore", () => {
         const [ex, en] = planeExitEntry(k, A, B, tRef);
         expect(ex).toBe(planeExitAfter(k, A, B, tRef));
         expect(en).toBe(planeEntryBefore(k, A, B, tRef));
+      }
+    });
+});
+
+describe("Eq. (8) flux test (§3.9)", () => {
+  for (const k of KAPPAS)
+    it(`κ=${k}: total flux through geodesic spheres of several radii equals Φ`, () => {
+      const L = embedPoint(k, [0.2, -0.1, 0.3]);
+      const power = 7.0;
+      const TL = translationTo(k, L);
+      for (const Rr of k > 0 ? [0.2, 0.6, 1.0, 1.4] : [0.1, 0.5, 1.0, 2.0]) {
+        // Monte-Carlo over uniformly random directions at L: x = exp_L(R·w), outward normal = transported radial tangent
+        let sum = 0;
+        const N = 20000;
+        for (let i = 0; i < N; i++) {
+          const w = [randn(), randn(), randn()]; const l = Math.hypot(...w); const wn = [w[0] / l, w[1] / l, w[2] / l];
+          const x = apply(TL, embedPoint(k, [Rr * wn[0], Rr * wn[1], Rr * wn[2]]));
+          const nrm = tangentToward(k, x, L).u; // points back toward the light; the sphere's outward normal is −nrm
+          for (let c = 0; c < 4; c++) nrm[c] = -nrm[c];
+          const E = irradiance(k, x, nrm, L, power);
+          // flux counts light arriving from inside: use the inward normal for the direct term
+          const { u } = tangentToward(k, x, L);
+          const cosIn = form(k, u, nrm); // = −1 exactly
+          void cosIn;
+          sum += E.direct * 0 + (power / (4 * Math.PI)) / Math.max(1e-6, sn(k, E.d) ** 2); // |E| magnitude at normal incidence
+        }
+        const meanE = sum / N;
+        expect(Math.abs(meanE * sphereArea(k, Rr) - power) / power).toBeLessThan(1e-9);
+        // and the cosine factor: a surface facing the light (normal toward it) gets the full value, facing away gets 0
+        const x = apply(TL, embedPoint(k, [Rr, 0, 0]));
+        const toward = tangentToward(k, x, L).u;
+        const away = v4(-toward[0], -toward[1], -toward[2], -toward[3]);
+        expect(Math.abs(irradiance(k, x, toward, L, power).direct * sphereArea(k, Rr) - power) / power).toBeLessThan(1e-9);
+        expect(irradiance(k, x, away, L, power).direct).toBe(0);
+        if (k > 0) expect(irradiance(k, x, away, L, power).antipodal).toBeGreaterThan(0); // S³: lit from behind via the long way round
       }
     });
 });

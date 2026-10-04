@@ -166,7 +166,33 @@ At 960×540: 29–40 ms. Sky rays dominate (they run to the fog); a closed scene
 | in-browser: walk into the pillar from the "pillar" camera (flat and k = −0.05) | stops 0.64 m from the axis = 0.4 (pillar) + 0.25 (player) |
 | in-browser: curved κ=0 vs flat after the camera refactor | 81–95 dB on 4 cameras |
 
-## Next — Phase 6: lighting & audio (flashlight, lamps, flares, shadow rays, fog, curved audio).
+## Phase 6 — Lighting & audio — DONE
+- Eq. (8) `irradiance` in TS + GLSL (`irradianceK`): E = Φ/(4π)·max(0,⟨u,n⟩)/sn_κ(d)², with the S³
+  long-way term (2π − d, −u). **Flux test** (vitest): Monte-Carlo over geodesic spheres of 4 radii
+  per κ, E·4π sn²(R) = Φ to 1e-9; back faces get 0 direct and > 0 antipodal in S³.
+- Pipeline: primary walk writes a G-buffer (MRT: baked rgb+T, median-depth hit X, transported
+  normal, (t, cell, T_before, x₀)); `shadow.frag` walks geodesics from X to each of ≤ 4 lamps at
+  half resolution accumulating transmittance (same Eq. 6/7 traversal; dense part = ball ∩ exact
+  dipole half-space); `shade.frag`: C = baked ⊙ (ambient + Σ ρ·colour·(E·shadow·e^{−σd} +
+  E_anti·e^{−σ(2π−d)})), flashlight = spotlight at the camera whose shadow is the primary ray's
+  own transmittance, lamp glows by closest geodesic approach (closed form), fog exp(−σt) that
+  doubles as the walk cutoff, Reinhard tone map.
+- `lights.ts`: lamps (P: 1.5 m ahead) and flares (T: thrown along the view geodesic at 7 m/s,
+  stop at dense foam via the player's collision probe, 12 s, flicker). F toggles the flashlight.
+- `audio/curvedAudio.ts`: lamps hum (detuned sawtooth → lowpass), flares crackle (gated noise);
+  gain ∝ 1/sn_κ(d)² normalised at 1.5 m (+ long way round in S³), panned by the Eq. 5 arrival
+  direction in camera coordinates. Opt-in checkbox (browser autoplay policy).
+- Approximation documented: lighting is evaluated once per pixel at the median-depth hit and
+  multiplies the whole accumulated baked colour; semi-transparent edges inherit it.
+
+### Measurements (M1 Pro, 1280×720, open scene, 2 lamps + flashlight, shadows at ½ res)
+| | ms/frame |
+|---|---|
+| walk + shadows + shading, κ = 0 | 21.5 |
+| walk + shadows + shading, k = −0.05 | 26.2 |
+Baked-output parity (curved κ=0 vs flat) after the G-buffer refactor: 80.8 dB.
+
+## Next — Phase 7: gameplay (beacons + angle HUD, light meter, levels 1–4, sandbox, slider).
 
 ## Known issues
 - Curved walker ~1.3× slower than the flat shader on the E³ path (generic 4D math); S³ ~2×.

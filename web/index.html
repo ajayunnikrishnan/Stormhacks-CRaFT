@@ -30,6 +30,10 @@
       <label><input id="repopix" type="checkbox" /> repo pixel grid (edges at ±1)</label>
       <label><input id="floor" type="checkbox" checked /> stay on the eye plane (no Q/E)</label>
       <label><input id="collide" type="checkbox" checked /> collisions</label>
+      <label><input id="lighting" type="checkbox" checked /> lighting (P lamp · T flare · F flashlight)</label>
+      <label>ambient <input id="ambient" type="range" min="0" max="1" step="0.01" value="0.25" /></label>
+      <label>fog σ (1/m) <input id="fog" type="range" min="0" max="0.2" step="0.005" value="0.04" /></label>
+      <label><input id="audio" type="checkbox" /> audio (lamps hum, flares crackle)</label>
       <div>WASD move · drag to look · shift = fast</div>
     </div>
     <script type="module" src="/src/main.ts"></script>

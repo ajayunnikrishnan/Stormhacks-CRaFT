@@ -3,6 +3,9 @@
 #define TEX_W_LOG2 12
 #define TEX_W_MASK 4095
 #define INT_MAX_ID 0x7FFFFFFF
+// every includer uses both sampler kinds; declare the precisions here so no shader forgets
+precision highp sampler2D;
+precision highp usampler2D;
 
 ivec2 texCoord(int i) { return ivec2(i & TEX_W_MASK, i >> TEX_W_LOG2); }
 

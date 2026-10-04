@@ -1,13 +1,15 @@
 import { createContext } from "./render/gl";
 import { loadScene, type RepoCamera } from "./foam/scene";
-import { Renderer, type RenderOptions, type IsoCameraState } from "./render/renderer";
+import { Renderer, type RenderOptions, type IsoCameraState, type LightingOptions, DEFAULT_LIGHTING } from "./render/renderer";
+import { Lights } from "./render/lights";
+import { CurvedAudio } from "./audio/curvedAudio";
 import { FlyCamera, repoCameraState } from "./game/camera";
 import { IsoCamera } from "./game/isocamera";
 import { curvatureParams } from "./foam/curved";
 import { DOMAIN_IDS, makeDomain, type Domain, type DomainId } from "./topology/domain";
 import { Player } from "./game/player";
 import { Overlay } from "./ui/overlay";
-import { apply, inverse, v4, geodesic, type V4 } from "./geometry/space";
+import { apply, inverse, v4, geodesic, tangentialize, type V4 } from "./geometry/space";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>("gl");
@@ -18,6 +20,7 @@ const camsEl = $<HTMLSelectElement>("cams");
 const topoEl = $<HTMLSelectElement>("topo");
 const modeEl = $<HTMLInputElement>("mode"), nearCullEl = $<HTMLInputElement>("nearcull"), repoPixEl = $<HTMLInputElement>("repopix"), floorEl = $<HTMLInputElement>("floor");
 const collideEl = $<HTMLInputElement>("collide");
+const lightEl = $<HTMLInputElement>("lighting"), ambientEl = $<HTMLInputElement>("ambient"), fogEl = $<HTMLInputElement>("fog"), audioEl = $<HTMLInputElement>("audio");
 const overlayCanvas = $<HTMLCanvasElement>("overlay");
 
 const params = new URLSearchParams(location.search);
@@ -40,6 +43,18 @@ async function main() {
   const cameras: RepoCamera[] = scene.manifest.cameras ?? [];
   const player = new Player(scene);
   const overlay = new Overlay(overlayCanvas);
+  const lights = new Lights();
+  const audio = new CurvedAudio();
+  const lighting: LightingOptions = { ...DEFAULT_LIGHTING, lights };
+  renderer.benchLighting = lighting;
+  let flashOn = true;
+  /** point d metres ahead of the camera (horizontal), world model coords */
+  const aheadWorld = (dM: number, vertical = 0) => {
+    const p = curvatureParams(k);
+    const invWb = inverse(p.kappa, isoCam.Wb);
+    const dir = tangentialize(p.kappa, v4(1, 0, 0, 0), v4(0, 0, vertical, -1)); // body coords: forward = −z
+    return apply(invWb, geodesic(p.kappa, v4(1, 0, 0, 0), dir, dM * p.scale));
+  };
   let laser: { o: V4; v: V4; length: number } | null = null;
   const beacons: V4[] = [];
   isoCam.moveHook = (d) => { player.tryMove(isoCam, renderer.curved, d, curvatureParams(k).scale); };
@@ -53,7 +68,22 @@ async function main() {
     }
     if (e.code === "KeyM") overlay.showMap = !overlay.showMap;
     if (e.code === "KeyB") { if (beacons.length >= 3) beacons.length = 0; beacons.push(isoCam.worldPos()); }
+    if (e.code === "KeyF") flashOn = !flashOn;
+    if (e.code === "KeyP") { // place a lamp 1.5 m ahead, 0.4 m above eye level
+      const pos = aheadWorld(1.5, 0.25);
+      const l = lights.addLamp(pos, [9, 8, 6.5]);
+      if (audioEl.checked) audio.addHum(l.id, pos);
+    }
+    if (e.code === "KeyT") { // throw a flare along the view direction
+      const p = curvatureParams(k);
+      const o = isoCam.worldPos();
+      const dir = tangentialize(p.kappa, o, apply(isoCam.invW(), v4(0, 0, 0, -1)));
+      const l = lights.throwFlare(o, dir, 7 * p.scale);
+      if (audioEl.checked) audio.addCrackle(l.id, l.pos);
+    }
+    if (e.code === "KeyX") { for (const l of lights.list) audio.remove(l.id); lights.list.length = 0; }
   });
+  canvas.addEventListener("pointerdown", () => { if (audioEl.checked) audio.ensure(); }, { once: false });
   const kPos = scene.manifest.curved?.k_max ?? 0.05;
   const kNeg = scene.manifest.curved?.k_neg ?? kPos;
   const sliderToK = (u: number) => (u < 0 ? -u * u * kNeg : u * u * kPos);
@@ -128,6 +158,10 @@ async function main() {
     renderLive: (w: number, h: number, o?: Partial<RenderOptions>) => Array.from(renderer.renderCurvedToArray(isoState(w / h), { ...opts(), ...o }, w, h)),
     setK, setTopology,
     setFog: (m: number, hops?: number) => { renderer.fogDistanceM = m; if (hops) renderer.maxHops = hops; },
+    addLamp: (dAheadM = 1.5, up = 0.25) => { const pos = aheadWorld(dAheadM, up); lights.addLamp(pos, [9, 8, 6.5]); return Array.from(pos); },
+    clearLights: () => { lights.list.length = 0; },
+    setLighting: (o: Partial<LightingOptions>) => Object.assign(lighting, o),
+    renderLit: (w: number, h: number) => { lighting.camFwdWorld = apply(isoCam.invW(), v4(0, 0, 0, -1)); return Array.from(renderer.renderLitToArray(isoState(w / h), opts(), lighting, w, h)); },
     moveCamera: (dx: number, dy: number, dz: number) => { isoCam.moveBy([dx, dy, dz]); player.recentre(isoCam, domain); },
     walk: (dx: number, dy: number, dz: number) => { player.tryMove(isoCam, renderer.curved, [dx, dy, dz], curvatureParams(k).scale); player.recentre(isoCam, domain); },
     compassAngle: () => player.compassAngle(),
@@ -166,7 +200,15 @@ async function main() {
       isoCam.update(dt, p.scale, !floorEl.checked);
       if (player.recentre(isoCam, domain) >= 0) hopsCrossed++;
       player.locate(renderer.curved, isoCam.worldPos());
-      renderer.frameCurved(isoState(W / H), opts(), W, H, Number(scaleEl.value));
+      // lights: flares move along geodesics and stop at dense foam
+      for (const id of lights.update(p.kappa, dt, (x) => player.isSolid(renderer.curved, x))) audio.remove(id);
+      for (const l of lights.list) { const srcPos = audio.sources.get(l.id); if (srcPos) srcPos.pos = l.pos; }
+      lighting.enabled = lightEl.checked; lighting.flashlight = flashOn && lightEl.checked;
+      lighting.ambient = Number(ambientEl.value); lighting.fogSigmaPerM = Number(fogEl.value);
+      lighting.camFwdWorld = apply(isoCam.invW(), v4(0, 0, 0, -1));
+      renderer.frameCurved(isoState(W / H), opts(), W, H, Number(scaleEl.value), lighting);
+      audio.enabled = audioEl.checked;
+      audio.update(p.kappa, p.scale, isoCam.worldPos(), isoCam.W());
       overlay.resize(W, H);
       const invWb = inverse(p.kappa, isoCam.Wb);
       const sh = scene.manifest.bbox_max.map((v, i) => ((v - scene.manifest.bbox_min[i]) / 2) * p.scale) as [number, number, number];
@@ -192,7 +234,7 @@ async function main() {
       `cells ${scene.n} · k ${scene.k} · D ${scene.d} · start ${s.startCell}\n` +
       `k = ${k.toExponential(2)} 1/m² · κ=${p.kappa} · s=${p.scale.toFixed(3)}\n` +
       `pos (m) ${Array.from(posM).map((v) => v.toFixed(2)).join(", ")} · cell ${player.cell}${domain ? ` · wall crossings ${hopsCrossed}` : ""}\n` +
-      `L laser · M map · B beacon (${beacons.length}/3)`;
+      `L laser · M map · B beacon (${beacons.length}/3) · P lamp · T flare · F flashlight ${flashOn ? "on" : "off"} · X clear · lights ${lights.list.length}`;
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);

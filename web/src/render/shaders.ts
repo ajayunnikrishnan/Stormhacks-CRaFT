@@ -6,6 +6,8 @@ import svPrepassCurved from "../../shaders/sv_prepass_curved.frag?raw";
 import walkFlat from "../../shaders/walk_flat.frag?raw";
 import walkCurved from "../../shaders/walk_curved.frag?raw";
 import composite from "../../shaders/composite.frag?raw";
+import shadow from "../../shaders/shadow.frag?raw";
+import shade from "../../shaders/shade.frag?raw";
 
 const includes: Record<string, string> = { "common.glsl": common, "geometry.glsl": geometry };
 
@@ -23,7 +25,7 @@ export function preprocess(src: string, defines: Record<string, string | number>
 /** Per-κ compiled variants of the curved shaders (κ folded to a constant). */
 export function curvedVariant(kappa: -1 | 0 | 1) {
   const d = { KAPPA: kappa === -1 ? "(-1)" : String(kappa) };
-  return { svPrepassCurved: preprocess(svPrepassCurved, d), walkCurved: preprocess(walkCurved, d) };
+  return { svPrepassCurved: preprocess(svPrepassCurved, d), walkCurved: preprocess(walkCurved, d), shadow: preprocess(shadow, d), shade: preprocess(shade, d) };
 }
 
 export const SHADERS = {

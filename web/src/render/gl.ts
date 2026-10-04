@@ -143,3 +143,29 @@ void main() {
   gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }
 `;
+
+export interface MrtTarget { fbo: WebGLFramebuffer; texs: WebGLTexture[]; width: number; height: number }
+
+/** Framebuffer with n colour attachments of the given sized formats (needs EXT_color_buffer_float). */
+export function mrtTarget(gl: WebGL2RenderingContext, width: number, height: number, formats: number[]): MrtTarget {
+  const fbo = gl.createFramebuffer()!;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  const texs: WebGLTexture[] = [];
+  formats.forEach((fmt, i) => {
+    const tex = gl.createTexture()!;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, fmt, width, height);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, tex, 0);
+    texs.push(tex);
+  });
+  gl.drawBuffers(formats.map((_, i) => gl.COLOR_ATTACHMENT0 + i));
+  const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+  if (status !== gl.FRAMEBUFFER_COMPLETE) throw new GLError(`MRT framebuffer incomplete 0x${status.toString(16)}`);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { fbo, texs, width, height };
+}
+export function destroyMrt(gl: WebGL2RenderingContext, t: MrtTarget) { gl.deleteFramebuffer(t.fbo); t.texs.forEach((x) => gl.deleteTexture(x)); }

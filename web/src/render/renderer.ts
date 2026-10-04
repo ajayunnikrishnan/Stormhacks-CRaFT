@@ -5,7 +5,8 @@
  * Scene textures are uploaded once; the curved per-κ textures (a_i and (R, cs R)) are
  * re-uploaded when the curvature changes. Pass timings via EXT_disjoint_timer_query_webgl2.
  */
-import { FULLSCREEN_VS, FullscreenQuad, Program, TEX_W, dataTexture, destroyTarget, renderTarget, type DataTexture, type RenderTarget } from "./gl";
+import { FULLSCREEN_VS, FullscreenQuad, Program, TEX_W, dataTexture, destroyTarget, renderTarget, mrtTarget, destroyMrt, type DataTexture, type RenderTarget, type MrtTarget } from "./gl";
+import type { Lights } from "./lights";
 import { SHADERS, curvedVariant } from "./shaders";
 import { startCell, type FoamScene } from "../foam/scene";
 import { computeCurvedSites, curvatureParams, sceneCentre, startCellCurved, type CurvedSites } from "../foam/curved";
@@ -35,7 +36,28 @@ export interface RenderOptions {
   background: [number, number, number];
 }
 
-export interface FrameStats { svMs: number; walkMs: number; width: number; height: number; startCell: number; mode: string }
+export interface LightingOptions {
+  enabled: boolean;
+  lights: Lights | null;
+  flashlight: boolean;
+  flashColor: [number, number, number];
+  flashConeDeg: [number, number]; // inner, outer half-angles
+  ambient: number;
+  rho: number;
+  fogSigmaPerM: number;
+  fogColor: [number, number, number];
+  exposure: number;
+  lampRadiusM: number;
+  shadowScale: number; // shadow pass resolution relative to the G-buffer
+  camFwdWorld: V4;
+}
+
+export const DEFAULT_LIGHTING: LightingOptions = {
+  enabled: true, lights: null, flashlight: true, flashColor: [14, 13, 11], flashConeDeg: [14, 24], ambient: 0.25, rho: 1.0,
+  fogSigmaPerM: 0.04, fogColor: [0.02, 0.025, 0.035], exposure: 1.2, lampRadiusM: 0.12, shadowScale: 0.5, camFwdWorld: new Float64Array([0, 0, 0, -1]),
+};
+
+export interface FrameStats { svMs: number; walkMs: number; width: number; height: number; startCell: number; mode: string; litMs?: number }
 
 export class Renderer {
   private quad: FullscreenQuad;
@@ -43,7 +65,11 @@ export class Renderer {
   private progSvCurvedK: Record<number, Program>;
   private progWalk: Program;
   private progWalkCurvedK: Record<number, Program>;
+  private progShadowK: Record<number, Program>;
+  private progShadeK: Record<number, Program>;
   private progComposite: Program;
+  private gbuf: MrtTarget | null = null;
+  private shadowRt: RenderTarget | null = null;
   private siteRgb: RenderTarget;
   private walkTarget: RenderTarget | null = null;
   private timer: { ext: unknown; pending: { q: WebGLQuery; pass: "sv" | "walk" }[] } | null = null;
@@ -61,6 +87,8 @@ export class Renderer {
   private locate: LocateGrid | null = null;
   private texLoc: DataTexture;
   maxHops = 16;
+  /** set by the app so bench() can time the full lit pipeline */
+  benchLighting: LightingOptions | null = null;
   /** Fog / step cutoff distance in metres (§3.9: fog also acts as the distance cutoff). */
   fogDistanceM = 40;
 
@@ -68,11 +96,13 @@ export class Renderer {
     this.quad = new FullscreenQuad(gl);
     this.progSv = new Program(gl, FULLSCREEN_VS, SHADERS.svPrepass, "sv_prepass");
     this.progWalk = new Program(gl, FULLSCREEN_VS, SHADERS.walkFlat, "walk_flat");
-    this.progSvCurvedK = {}; this.progWalkCurvedK = {};
+    this.progSvCurvedK = {}; this.progWalkCurvedK = {}; this.progShadowK = {}; this.progShadeK = {};
     for (const kap of [-1, 0, 1] as const) {
       const v = curvedVariant(kap);
       this.progSvCurvedK[kap] = new Program(gl, FULLSCREEN_VS, v.svPrepassCurved, `sv_prepass_curved[${kap}]`);
       this.progWalkCurvedK[kap] = new Program(gl, FULLSCREEN_VS, v.walkCurved, `walk_curved[${kap}]`);
+      this.progShadowK[kap] = new Program(gl, FULLSCREEN_VS, v.shadow, `shadow[${kap}]`);
+      this.progShadeK[kap] = new Program(gl, FULLSCREEN_VS, v.shade, `shade[${kap}]`);
     }
     this.progComposite = new Program(gl, FULLSCREEN_VS, SHADERS.composite, "composite");
     const rows = Math.max(1, Math.ceil((scene.n * scene.k) / TEX_W));
@@ -226,9 +256,19 @@ export class Renderer {
     this.beginTimer("sv"); this.quad.draw(); this.endTimer();
   }
 
-  private walkCurved(cam: IsoCameraState, opts: RenderOptions, w: number, h: number, internalFormat: number): RenderTarget {
+  private ensureGbuf(w: number, h: number): MrtTarget {
+    const gl = this.gl;
+    const g = this.gbuf;
+    if (g && g.width === w && g.height === h) return g;
+    if (g) destroyMrt(gl, g);
+    this.gbuf = mrtTarget(gl, w, h, [gl.RGBA32F, gl.RGBA32F, gl.RGBA32F, gl.RGBA32F]);
+    return this.gbuf;
+  }
+
+  /** Primary curved walk into the G-buffer; returns it (attachment 0 = baked colour + transmittance). */
+  private walkCurved(cam: IsoCameraState, opts: RenderOptions, w: number, h: number, _internalFormat: number): MrtTarget {
     const gl = this.gl, s = this.scene, c = this.curved, p = this.progWalkCurvedK[c.params.kappa];
-    const target = this.ensureWalkTarget(w, h, internalFormat);
+    const target = this.ensureGbuf(w, h);
     const start = startCellCurved(c, cam.rayO);
     this.stats.startCell = start; this.stats.mode = `curved κ=${c.params.kappa}`;
     gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
@@ -270,11 +310,71 @@ export class Renderer {
     this.composite(this.walk(cam, opts, w, h, this.gl.RGBA16F), canvasW, canvasH);
   }
 
-  frameCurved(cam: IsoCameraState, opts: RenderOptions, canvasW: number, canvasH: number, renderScale: number) {
+  private lightArrays(lo: LightingOptions) {
+    const n = Math.min(8, lo.lights?.list.length ?? 0);
+    const pos = new Float32Array(8 * 4), col = new Float32Array(8 * 3);
+    for (let i = 0; i < n; i++) { pos.set(lo.lights!.list[i].pos, i * 4); col.set(lo.lights!.list[i].color, i * 3); }
+    return { n, pos, col };
+  }
+
+  /** Shadow pass: transmittance from the G-buffer hit toward lights 0..3, at reduced resolution. */
+  private shadowPass(g: MrtTarget, lo: LightingOptions): RenderTarget {
+    const gl = this.gl, s = this.scene, c = this.curved, p = this.progShadowK[c.params.kappa];
+    const w = Math.max(4, Math.round(g.width * lo.shadowScale)), h = Math.max(4, Math.round(g.height * lo.shadowScale));
+    if (!this.shadowRt || this.shadowRt.width !== w || this.shadowRt.height !== h) {
+      if (this.shadowRt) destroyTarget(gl, this.shadowRt);
+      this.shadowRt = renderTarget(gl, w, h, gl.RGBA16F, gl.LINEAR);
+    }
+    const { n, pos } = this.lightArrays(lo);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.shadowRt.fbo);
+    gl.viewport(0, 0, w, h);
+    p.use();
+    p.tex("uA", 0, this.texA.tex); p.tex("uRad", 1, this.texRad.tex); p.tex("uNSigma", 2, s.texNSigma.tex);
+    p.tex("uAdjOff", 3, this.texAdjOffU.tex); p.tex("uAdjIdx", 4, this.texAdjIdxU.tex);
+    p.tex("uGHit", 5, g.texs[1]); p.tex("uGMeta", 6, g.texs[3]);
+    p.u1i("uKappa", c.params.kappa); p.u1f("uScale", c.params.scale);
+    p.u1i("uLightCount", Math.min(4, n));
+    gl.uniform4fv(p.loc("uLightPos"), pos.subarray(0, 16));
+    p.u2f("uGRes", g.width, g.height); p.u2f("uRes", w, h);
+    this.quad.draw();
+    return this.shadowRt;
+  }
+
+  /** Deferred shading + fog + tone map to the given framebuffer (null = canvas). */
+  private shadePass(g: MrtTarget, shadow: RenderTarget, cam: IsoCameraState, lo: LightingOptions, fbo: WebGLFramebuffer | null, outW: number, outH: number) {
+    const gl = this.gl, c = this.curved, p = this.progShadeK[c.params.kappa];
+    const { n, pos, col } = this.lightArrays(lo);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.viewport(0, 0, outW, outH);
+    p.use();
+    p.tex("uGColor", 0, g.texs[0]); p.tex("uGHit", 1, g.texs[1]); p.tex("uGNormal", 2, g.texs[2]); p.tex("uGMeta", 3, g.texs[3]); p.tex("uShadow", 4, shadow.tex);
+    p.u2f("uRes", outW, outH); p.u2f("uGRes", g.width, g.height);
+    p.u1i("uKappa", c.params.kappa); p.u1f("uScale", c.params.scale);
+    p.u1i("uLightCount", n);
+    gl.uniform4fv(p.loc("uLightPos"), pos); gl.uniform3fv(p.loc("uLightColor"), col);
+    p.u1f("uLightRadius", lo.lampRadiusM * c.params.scale);
+    p.u1i("uFlashOn", lo.flashlight ? 1 : 0);
+    p.u4fv("uCamPos", Float32Array.from(cam.rayO)); p.u4fv("uCamFwd", Float32Array.from(lo.camFwdWorld));
+    p.u3f("uFlashColor", lo.flashColor[0], lo.flashColor[1], lo.flashColor[2]);
+    p.u2f("uFlashCone", Math.cos((lo.flashConeDeg[0] * Math.PI) / 180), Math.cos((lo.flashConeDeg[1] * Math.PI) / 180));
+    p.u1f("uAmbient", lo.ambient); p.u1f("uRho", lo.rho);
+    p.u1f("uFogSigma", lo.fogSigmaPerM / c.params.scale); p.u3f("uFogColor", lo.fogColor[0], lo.fogColor[1], lo.fogColor[2]);
+    p.u1f("uExposure", lo.exposure); p.u1i("uLightingOn", lo.enabled ? 1 : 0);
+    p.u2f("uTanHalfFov", cam.tanHalfFov[0], cam.tanHalfFov[1]);
+    p.umat4("uInvW", Float32Array.from(cam.invW));
+    this.quad.draw();
+    this.pollTimers();
+  }
+
+  frameCurved(cam: IsoCameraState, opts: RenderOptions, canvasW: number, canvasH: number, renderScale: number, lo: LightingOptions = DEFAULT_LIGHTING) {
     const w = Math.max(8, Math.round(canvasW * renderScale)), h = Math.max(8, Math.round(canvasH * renderScale));
     this.stats.width = w; this.stats.height = h;
+    // the fog is the walk's distance cutoff: stop where e^{−σt} < 1%
+    this.fogDistanceM = lo.enabled && lo.fogSigmaPerM > 0 ? Math.min(this.fogDistanceM, 4.6 / lo.fogSigmaPerM) : this.fogDistanceM;
     this.svPrepassCurved(cam);
-    this.composite(this.walkCurved(cam, opts, w, h, this.gl.RGBA16F), canvasW, canvasH);
+    const g = this.walkCurved(cam, opts, w, h, this.gl.RGBA16F);
+    const sh = this.shadowPass(g, lo);
+    this.shadePass(g, sh, cam, lo, null, canvasW, canvasH);
   }
 
   private readback(target: RenderTarget, w: number, h: number): Float32Array {
@@ -296,28 +396,66 @@ export class Renderer {
     this.svPrepass(cam);
     return this.readback(this.walk(cam, opts, w, h, this.gl.RGBA32F), w, h);
   }
-  /** Offline curved render at the current curvature. */
+  private readbackFbo(fbo: WebGLFramebuffer, w: number, h: number, attachment = 0): Float32Array {
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.readBuffer(gl.COLOR_ATTACHMENT0 + attachment);
+    const buf = new Float32Array(w * h * 4);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.FLOAT, buf);
+    gl.readBuffer(gl.COLOR_ATTACHMENT0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    const out = new Float32Array(w * h * 3);
+    for (let y = 0; y < h; y++) {
+      const srcRow = (h - 1 - y) * w;
+      for (let x = 0; x < w; x++) { const si = (srcRow + x) * 4, di = (y * w + x) * 3; out[di] = buf[si]; out[di + 1] = buf[si + 1]; out[di + 2] = buf[si + 2]; }
+    }
+    return out;
+  }
+
+  /** Offline curved render at the current curvature: BAKED colour (G-buffer attachment 0), for parity tests. */
   renderCurvedToArray(cam: IsoCameraState, opts: RenderOptions, w: number, h: number): Float32Array {
     this.svPrepassCurved(cam);
-    return this.readback(this.walkCurved(cam, opts, w, h, this.gl.RGBA32F), w, h);
+    const g = this.walkCurved(cam, opts, w, h, this.gl.RGBA32F);
+    return this.readbackFbo(g.fbo, w, h, 0);
+  }
+
+  /** Offline LIT render (full pipeline) at exact size. */
+  renderLitToArray(cam: IsoCameraState, opts: RenderOptions, lo: LightingOptions, w: number, h: number): Float32Array {
+    this.svPrepassCurved(cam);
+    const g = this.walkCurved(cam, opts, w, h, this.gl.RGBA32F);
+    const sh = this.shadowPass(g, lo);
+    const out = renderTarget(this.gl, w, h, this.gl.RGBA32F);
+    this.shadePass(g, sh, cam, lo, out.fbo, w, h);
+    const arr = this.readbackFbo(out.fbo, w, h, 0);
+    destroyTarget(this.gl, out);
+    return arr;
   }
 
   /** Benchmark: pre-pass + walk `frames` times at w×h, synchronised by a 1-px readback. ms/frame. */
   bench(cam: CameraState | IsoCameraState, opts: RenderOptions, w: number, h: number, frames: number): { msPerFrame: number; svOnlyMs: number } {
     const gl = this.gl;
     const curved = "invW" in cam;
-    const px = new Uint16Array(4);
-    const sync = (fbo: WebGLFramebuffer) => { gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.HALF_FLOAT, px); };
+    const px = new Uint16Array(4), pxf = new Float32Array(4);
+    // RGBA16F targets read back as HALF_FLOAT, the RGBA32F G-buffer as FLOAT
+    const sync = (fbo: WebGLFramebuffer, float32 = false) => { gl.bindFramebuffer(gl.FRAMEBUFFER, fbo); if (float32) gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, pxf); else gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.HALF_FLOAT, px); };
     const sv = () => (curved ? this.svPrepassCurved(cam as IsoCameraState) : this.svPrepass(cam as CameraState));
     const wk = () => (curved ? this.walkCurved(cam as IsoCameraState, opts, w, h, gl.RGBA16F) : this.walk(cam as CameraState, opts, w, h, gl.RGBA16F));
-    sv(); const t = wk(); sync(t.fbo);
+    sv(); const t = wk(); sync(t.fbo, curved);
+    // for the curved path also measure the lighting passes
+    if (curved && this.benchLighting) {
+      const lo = this.benchLighting;
+      let t1 = performance.now();
+      for (let i = 0; i < frames; i++) { sv(); const g = this.walkCurved(cam as IsoCameraState, opts, w, h, gl.RGBA16F); const shd = this.shadowPass(g, lo); this.shadePass(g, shd, cam as IsoCameraState, lo, null, w, h); }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.shadowRt!.fbo); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.HALF_FLOAT, px);
+      this.stats.litMs = (performance.now() - t1) / frames;
+    }
     let t0 = performance.now();
     for (let i = 0; i < frames; i++) sv();
     sync(this.siteRgb.fbo);
     const svOnlyMs = (performance.now() - t0) / frames;
     t0 = performance.now();
     for (let i = 0; i < frames; i++) { sv(); wk(); }
-    sync(t.fbo);
+    sync(t.fbo, curved);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     return { msPerFrame: (performance.now() - t0) / frames, svOnlyMs };
   }

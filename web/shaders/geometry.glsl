@@ -199,3 +199,18 @@ vec4 tangentializeK(int k, vec4 x, vec4 v) {
 }
 // area of a geodesic sphere of radius R: 4π sn_κ(R)²
 float sphereAreaK(int k, float R) { float s = snK(k, R); return 4.0 * 3.141592653589793 * s * s; }
+
+// Eq. (8): E = (Φ/4π)·max(0,⟨u,n⟩)/sn_κ(d)², u = tangent toward L. Returns (direct, antipodal(S³ only), d, 0).
+vec4 irradianceK(int k, vec4 x, vec4 n, vec4 L, float power) {
+  float d;
+  vec4 u = tangentTowardK(k, x, L, d);
+  float s = max(1e-3, abs(snK(k, d)));
+  float direct = (power / (4.0 * 3.141592653589793)) * max(0.0, formK(k, u, n)) / (s * s);
+  float anti = 0.0;
+  if (k > 0) {
+    float d2 = TWO_PI - d;
+    float s2 = max(1e-3, abs(sin(d2)));
+    anti = (power / (4.0 * 3.141592653589793)) * max(0.0, -formK(k, u, n)) / (s2 * s2);
+  }
+  return vec4(direct, anti, d, 0.0);
+}

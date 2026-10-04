@@ -77,7 +77,10 @@ int locateCell(int guess, vec4 x, float kk) {
   return c;
 }
 
-out vec4 oColor;
+layout(location = 0) out vec4 oColor;   // baked rgb, w = final transmittance
+layout(location = 1) out vec4 oHit;     // (x1, x2, x3, hitFlag) of the median-depth hit (world model coords)
+layout(location = 2) out vec4 oNormal;  // transported dipole normal at the hit (ambient tangent)
+layout(location = 3) out vec4 oMeta;    // (t_hit total arc length, cell id, transmittance before the hit, x0)
 
 void main() {
   // pixel → camera-space direction (camera looks down −z, pixel centres)
@@ -101,6 +104,8 @@ void main() {
 
   vec3 rgb = vec3(0.0);
   float logT = 0.0;
+  bool gotHit = false;
+  oHit = vec4(0.0); oNormal = vec4(0.0); oMeta = vec4(1e30, -1.0, 1.0, 1.0);
   int prim = uStart;
   float ptNear = 0.0;                              // arc length (since the last crossing) at which the ray entered `prim`
   float tTotal = 0.0;                              // arc length accumulated over previous domain hops
@@ -210,6 +215,16 @@ void main() {
       float alpha = 1.0 - exp(delta);
       rgb += colour * alpha * trans;
       logT += delta;
+      // G-buffer: record the first segment that takes the transmittance below 0.5 (median depth)
+      if (!gotHit && exp(logT) < 0.5) {
+        gotHit = true;
+        float tX = tNear + tauNear;                       // arc length (since the last hop) of the dense start
+        vec4 X = geodesicK(k, o, v, tX);
+        vec4 N = translationToK(k, P) * vec4(0.0, nflat); // transported normal (tangent at P ≈ at X)
+        oHit = vec4(X.yzw, 1.0);
+        oNormal = N;
+        oMeta = vec4(tTotal + tX, float(prim), trans, X.x);
+      }
     }
     } // shade
 
@@ -238,6 +253,7 @@ void main() {
       ptNear = max(ptNear, ptFar);
     }
   }
-  rgb += uBackground * exp(logT);
-  oColor = vec4(rgb, 1.0);
+  float Tfinal = exp(logT);
+  rgb += uBackground * Tfinal;
+  oColor = vec4(rgb, Tfinal);
 }

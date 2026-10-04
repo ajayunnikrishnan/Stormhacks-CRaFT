@@ -439,3 +439,23 @@ export function sphereArea(k: Kappa, R: number): number {
   const s = sn(k, R);
   return 4 * Math.PI * s * s;
 }
+
+// ---------------------------------------------------------------------------
+// Eq. (8): irradiance at x (normal n, unit tangent) from a point light of power Φ at L:
+//   E = (Φ / 4π) · max(0, ⟨u, n⟩) / sn_κ(d)²,   u = tangent at x toward L (Eq. 5), d = d(x, L)
+// Flux through a geodesic sphere of radius R: E·4π sn²(R) = Φ for every R (§3.9 flux test).
+// S³: light also arrives the long way round (distance 2π − d, direction −u); both terms are
+// returned separately so the caller can clamp near the antipode (sn → 0).
+// ---------------------------------------------------------------------------
+export function irradiance(k: Kappa, x: V4, n: V4, L: V4, power: number, minSn = 1e-3): { direct: number; antipodal: number; d: number } {
+  const { u, d } = tangentToward(k, x, L);
+  const s = Math.max(minSn, Math.abs(sn(k, d)));
+  const direct = (power / (4 * Math.PI)) * Math.max(0, form(k, u, n)) / (s * s);
+  let antipodal = 0;
+  if (k > 0) {
+    const d2 = 2 * Math.PI - d;
+    const s2 = Math.max(minSn, Math.abs(Math.sin(d2)));
+    antipodal = (power / (4 * Math.PI)) * Math.max(0, -form(k, u, n)) / (s2 * s2);
+  }
+  return { direct, antipodal, d };
+}
