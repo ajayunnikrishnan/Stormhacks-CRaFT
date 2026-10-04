@@ -30,6 +30,7 @@ from pathlib import Path
 
 import numpy as np
 
+import curved as cv
 from pf_common import (
     FoamScene,
     activate,
@@ -131,7 +132,22 @@ def _exact_power_owner(s: FoamScene, x: np.ndarray, chunk: int = 2048) -> np.nda
     return out
 
 
-def write_scene(s: FoamScene, out_dir: Path, info: dict, extra_meta: dict | None = None) -> dict:
+def curved_union(s: FoamScene, n_scene: int, k_max: float | None, n_per_sign: int, verify_samples: int = 0, k_neg: float | None = None) -> dict:
+    """§3.5: union adjacency over a sweep of curvatures k ∈ [−k_neg, k_max] (1/m²).
+    Default k_max keeps the whole scene inside an S³ hemisphere with margin:
+    s_max · max|x − centre| = 1.2  (< π/2). H³ has no such limit; default k_neg = 4·k_max."""
+    centre = 0.5 * (s.pos[:n_scene].min(0) + s.pos[:n_scene].max(0))
+    ext = float(np.linalg.norm(s.pos - centre, axis=-1).max())
+    if k_max is None:
+        k_max = (1.2 / ext) ** 2
+    if k_neg is None:
+        k_neg = 4.0 * k_max
+    ks = [-v for v in reversed(cv.sweep_values(k_neg, n_per_sign)[n_per_sign + 1 :])] + cv.sweep_values(k_max, n_per_sign)[n_per_sign:]
+    off, idx, info = cv.union_adjacency(s, centre, ks, verify_samples=verify_samples)
+    return {"centre": centre.tolist(), "k_max": k_max, "k_neg": k_neg, "scene_extent": ext, "offsets": off, "index": idx, "info": info}
+
+
+def write_scene(s: FoamScene, out_dir: Path, info: dict, extra_meta: dict | None = None, union: dict | None = None) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     n, k, d = s.n, s.k, s.d
     sections = {}
@@ -155,6 +171,9 @@ def write_scene(s: FoamScene, out_dir: Path, info: dict, extra_meta: dict | None
     add("svrgb", s.sv_rgb, np.float16, (n * k * d, 3))
     add("adjoff", s.adj_offsets, np.uint32, (n + 1,))
     add("adjidx", s.adj_index, np.uint32, (s.adj_index.shape[0],))
+    if union is not None:
+        add("adjoff_u", union["offsets"], np.uint32, (n + 1,))
+        add("adjidx_u", union["index"], np.uint32, (union["index"].shape[0],))
     data = b"".join(blobs)
     (out_dir / "scene.bin").write_bytes(data)
     lo, hi = s.pos[: info["n_scene_cells"]].min(0), s.pos[: info["n_scene_cells"]].max(0)
@@ -171,6 +190,15 @@ def write_scene(s: FoamScene, out_dir: Path, info: dict, extra_meta: dict | None
         "sections": sections,
         "info": info,
     }
+    if union is not None:
+        manifest["curved"] = {
+            "centre": union["centre"],
+            "k_max": union["k_max"],
+            "k_neg": union["k_neg"],
+            "scene_extent": union["scene_extent"],
+            "n_edges_directed_union": int(union["index"].shape[0]),
+            "sweep": union["info"],
+        }
     if extra_meta:
         manifest.update(extra_meta)
     (out_dir / "scene.json").write_text(json.dumps(manifest, indent=1))
@@ -184,6 +212,10 @@ def main():
     ap.add_argument("--no-steiner", action="store_true")
     ap.add_argument("--verify", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--curved", action="store_true", help="also export the union adjacency over a curvature sweep (§3.5)")
+    ap.add_argument("--kmax", type=float, default=None, help="max |k| in 1/m² (default: S³ hemisphere limit)")
+    ap.add_argument("--sweep", type=int, default=16, help="sweep samples per sign")
+    ap.add_argument("--kneg", type=float, default=None, help="max |k| on the H³ side (default 4·kmax)")
     args = ap.parse_args()
     scene_dir = Path(args.scene_dir)
     s, info = prepare_scene(scene_dir, steiner=not args.no_steiner, seed=args.seed)
@@ -194,7 +226,14 @@ def main():
     cams = scene_dir / "cameras.json"
     if cams.exists():
         extra["cameras"] = json.loads(cams.read_text())
-    m = write_scene(s, Path(args.out), info, extra)
+    union = None
+    if args.curved:
+        union = curved_union(s, info["n_scene_cells"], args.kmax, args.sweep, verify_samples=4000 if args.verify else 0, k_neg=args.kneg)
+        ui = union["info"]
+        print(f"curved sweep: k in [-{union['k_neg']:.4f}, {union['k_max']:.4f}]  union edges {ui['union_edges']}  inflation vs flat {ui['inflation_vs_flat']:.3f}  avg deg {ui['union_avg_degree']:.1f}  max deg {ui['union_max_degree']}")
+        for st in ui["samples"]:
+            print(f"  k={st['k']:+.4f} κ={st['kappa']:+d} s={st['s']:.3f} edges={st['n_edges']} avgdeg={st['avg_degree']:.1f} zero-deg={st['n_zero_degree']}" + (f" verify={st['verify']}" if "verify" in st else ""))
+    m = write_scene(s, Path(args.out), info, extra, union)
     print(json.dumps({k: v for k, v in m.items() if k != "sections"}, indent=1))
 
 

@@ -78,10 +78,33 @@ float planeEntryBeforeK(int k, float A, float B, float tMax) {
   return (has && !ex && t <= tMax) ? t : -1e30;
 }
 float planeValueK(int k, float A, float B, float t) { return A * csK(k, t) + B * snK(k, t); }
+// Fused: first EXIT root ≥ tRef (or 1e30) and last ENTRY root ≤ tRef (or −1e30) in one solve.
+// Identical results to planeExitAfterK/planeEntryBeforeK; used by the walker's inner loop.
+void planeExitEntryK(int k, float A, float B, float tRef, out float tExit, out float tEntry) {
+  tExit = 1e30; tEntry = -1e30;
+  if (k > 0) {
+    if (A * A + B * B < GEOM_EPS * GEOM_EPS) return;
+    float phi = atan(B, A);
+    float bx = phi - HALF_PI;
+    tExit = bx + TWO_PI * ceil((tRef - bx) / TWO_PI);
+    float bn = phi + HALF_PI;
+    tEntry = bn + TWO_PI * floor((tRef - bn) / TWO_PI);
+    return;
+  }
+  float t;
+  if (k == 0) { if (B == 0.0) return; t = -A / B; }
+  else { if (abs(B) <= abs(A)) return; t = 0.5 * log((B - A) / (A + B)); }
+  if (B > 0.0) { if (t >= tRef) tExit = t; }
+  else { if (t <= tRef) tEntry = t; }
+}
 
 // Eq. (7): inside ball(p,r) ⇔ A cs_κ(t) + B sn_κ(t) ≥ κ cs_κ(r), A=⟨o',p⟩, B=⟨v,p⟩
 //   S³: t ∈ [φ−α, φ+α] + 2πk, α = acos(cos r / R);  H³: E=e^t between roots of
 //   (A+B)E² + 2cosh(r)E + (A−B) = 0;  E³: ordinary quadratic.
+//   Conditioned form (see space.ts): A = κ + A', A' = −½⟨o'−p,o'−p⟩_κ; H³ roots as E = 1 + δ;
+//   S³ via R − cos r computed from small terms and α = 2 asin(√(ε/2)).
+float log1pK(float x) { return abs(x) < 1e-4 ? x - 0.5 * x * x + x * x * x / 3.0 : log(1.0 + x); }
+
 bool ballIntervalK(int k, vec4 o, vec4 v, vec4 p, float r, float tMin, out float t1, out float t2) {
   t1 = 0.0; t2 = 0.0;
   if (k == 0) {
@@ -94,20 +117,27 @@ bool ballIntervalK(int k, vec4 o, vec4 v, vec4 p, float r, float tMin, out float
     t1 = (-qb - s) * 0.5; t2 = (-qb + s) * 0.5;
     return true;
   }
-  float A = formK(k, o, p), B = formK(k, v, p);
+  vec4 d = o - p;
+  float Ap = -0.5 * (float(k) * d.x * d.x + dot(d.yzw, d.yzw));   // A' = A − κ
+  float B = formK(k, v, p);
   if (k < 0) {
-    float cr = cosh(r);
-    float disc = cr * cr - (A * A - B * B);
+    float sr = sinh(r), sh = sinh(0.5 * r);
+    float disc = sr * sr + 2.0 * Ap - Ap * Ap + B * B;
     if (disc < 0.0) return false;
-    float s = sqrt(disc);
-    float E1 = (-cr + s) / (A + B), E2 = (-cr - s) / (A + B);
-    t1 = log(E1); t2 = log(E2);
+    float sq = sqrt(disc);
+    float den = -1.0 + Ap + B;
+    float num0 = -2.0 * sh * sh - Ap - B;
+    float ta = log1pK((num0 + sq) / den), tb = log1pK((num0 - sq) / den);
+    t1 = min(ta, tb); t2 = max(ta, tb);
     return true;
   }
+  float A = 1.0 + Ap;
   float R = length(vec2(A, B));
-  float cr = cos(r);
-  if (R < cr) return false;
-  float alpha = acos(min(1.0, cr / R));
+  float sh = sin(0.5 * r);
+  float RmC = (2.0 * Ap + Ap * Ap + B * B) / (R + 1.0) + 2.0 * sh * sh;   // R − cos r
+  if (RmC < 0.0) return false;
+  float eps = RmC / R;
+  float alpha = 2.0 * asin(min(1.0, sqrt(0.5 * eps)));
   float phi = atan(B, A);
   float kk = ceil((tMin - (phi + alpha)) / TWO_PI);
   t1 = phi - alpha + TWO_PI * kk; t2 = phi + alpha + TWO_PI * kk;

@@ -3,7 +3,7 @@ import {
   type Kappa, type V4, ORIGIN, v4, form, cs, sn, distance, geodesic, geodesicDir, tangentToward,
   planeRoot, planeExitAfter, planeEntryBefore, planeValue, ballInterval, embedPoint, logAtOrigin, project,
   translationTo, translationByVector, rotation, inverse, isometryError, reorthonormalize, mul, apply,
-  identity, advance, tangentialize, dot4,
+  identity, advance, tangentialize, dot4, planeExitEntry,
 } from "../src/geometry/space";
 
 const KAPPAS: Kappa[] = [-1, 0, 1];
@@ -312,4 +312,16 @@ describe("project", () => {
       expect(onModelError(k, x)).toBeLessThan(1e-12);
     }
   });
+});
+
+describe("fused planeExitEntry equals planeExitAfter/planeEntryBefore", () => {
+  for (const k of KAPPAS)
+    it(`κ=${k}`, () => {
+      for (let n = 0; n < 2000; n++) {
+        const A = randn(), B = randn(), tRef = R() * 10;
+        const [ex, en] = planeExitEntry(k, A, B, tRef);
+        expect(ex).toBe(planeExitAfter(k, A, B, tRef));
+        expect(en).toBe(planeEntryBefore(k, A, B, tRef));
+      }
+    });
 });

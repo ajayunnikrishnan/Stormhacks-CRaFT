@@ -60,9 +60,57 @@ Dynamic resolution scaling is in (manual slider now; auto in Phase 8).
 - Note for the writeup: "MᵀJM = J" characterises isometries only for κ ≠ 0; for E³
   (degenerate J) the condition is top row (1,0,0,0) + orthonormal rotation block.
 
-## Next — Phase 3: curved scene embedding + curved walker (primary rays, single scene).
+## Phase 3 — Curved scene + curved walker (primary rays) — DONE
+- `tools/curved.py`: embedding (§3.6), curved power-cell rule a_i = p_i/cs_κ(r_i) with the unified
+  form ⟨x,a⟩' (κ'=1 for E³ with a=(−pm, p̄)), adjacency per κ (H³: Klein-model regular
+  triangulation with c=ā/2, w=|c|²+κa₀; S³: 4D hull of {a_i}; E³: flat), κ-sweep union,
+  exact CPU walk. `tools/export_scene.py --curved` ships the union graph + sweep stats.
+- `tests/python/test_curved.py` (10): flat limit of cosh d/cosh r and cos d/cos r (O(s⁴)),
+  cell rule == natural forms, bisector linearity, adjacency vs brute force at 5 curvatures
+  (all three geometries), union-graph walk == exact walk at 4 curvatures NOT in the sweep.
+- Union inflation on the synth room: **+15 % edges** (avg degree 13.1 → 15.1) over
+  k ∈ [−0.14, +0.035] 1/m² (12 samples per sign; S³ limit = hemisphere with margin).
+- `web/shaders/walk_curved.frag` + `sv_prepass_curved.frag`: exact traversal (Eqs. 6–7),
+  locally-flat shading in the cell frame (§3.11), transported SV direction (Eq. 4).
+  Compiled per κ (`#define KAPPA`) so branches fold. `web/src/foam/curved.ts` recomputes
+  a_i, (R, cs R) on the CPU when the slider moves (one texSubImage2D each).
+- `web/src/game/isocamera.ts`: camera at the origin, world→camera isometry W = R_pitch·W_body,
+  body confined to the eye plane x₂ = 0, re-orthonormalised every frame; curvature changes
+  keep the physical pose (metres) and yaw.
+- `tools/ref_render_curved.py`: fp64 CPU mirror of the curved walker.
+- **Numerical finding (writeup):** the hyperboloid formulation loses fp32 digits as s → 0
+  (bisector offsets and the ball test are O(s²) differences of O(1) numbers). Fixed by
+  storing a₀−1 and rewriting Eq. (7) in terms of the small chord ⟨o−p,o−p⟩ (same equations;
+  see space.ts / geometry.glsl comments). The E³ switch is at |k| < 1e-9; at |k| = 1e-6 the
+  curved and flat images agree to 43–52 dB, so the switch is invisible.
+
+### Acceptance (synthetic room, camera "corner" unless noted)
+| test | result |
+|---|---|
+| curved shader at κ=0 vs flat shader (4 cameras, 160×120) | 82.3 / 88.6 / 85.6 / 90.5 dB |
+| curved vs flat at k = ±1e-6 (E³-switch continuity) | 51.8 / 42.8 dB, ≤ 32 px off by > 0.02 |
+| GPU fp32 vs fp64 CPU reference, k = −0.12 (H³) | 45.6 dB, 26 / 6912 px > 0.02 |
+| GPU fp32 vs fp64 CPU reference, k = +0.03 (S³) | 46.8 dB, 36 / 6912 px > 0.02 |
+| GPU fp32 vs fp64 CPU reference, k = 0.001 | 66.2 dB |
+| local-flat shading error max |Δt|/R (H³ k=−0.12 / S³ k=0.03) | 2.8e-3 / 6.8e-4 = 2.7–2.8 · R² |
+| GLSL vs TS probe after the conditioning rewrite | 0 mismatches, max rel err 2e-5 |
+
+### Performance, curved walker (M1 Pro, ms/frame, pre-pass + walk)
+| view | k | 1920×1080 | 1280×720 |
+|---|---|---|---|
+| corner | 0 (E³ path) | 61.0 | 30.0 |
+| corner | −0.12 (H³) | 53.7 | 25.5 |
+| corner | +0.03 (S³) | 96.9 | 46.8 |
+| pillar | 0 / −0.12 / +0.03 | 27.6 / 31.5 / 42.8 | 13.6 / 15.4 / 21.1 |
+SV pre-pass: ~0.3 ms. The S³ variant pays for atan + periodic bookkeeping per neighbour.
+30 fps at 1080p holds for typical views; the worst S³ view needs ~60 % render scale on this
+integrated GPU (auto-scaling lands in Phase 8). Flat shader for reference: 47 ms / 23 ms.
+
+## Next — Phase 4: topology (3-torus → {4,3,5} → S³ → closed manifolds).
 
 ## Known issues
+- Curved walker ~1.3× slower than the flat shader on the E³ path (generic 4D math); S³ ~2×.
+  Candidate optimisations: per-frame per-edge pre-pass of A = w·o; fewer transcendental calls.
 - No CUDA on the dev Mac; PSNR vs the real Warp kernel pending (needs lab GPU + checkpoint).
 - Synthetic scene shows faint speckle on surfaces seen at grazing angles (synthetic radii
   slightly small for grazing coverage); cosmetic, will retune radii when visuals matter.

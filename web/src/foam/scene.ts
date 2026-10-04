@@ -19,6 +19,7 @@ export interface SceneManifest {
   sections: Record<string, Section>;
   info: Record<string, unknown>;
   cameras?: RepoCamera[];
+  curved?: { centre: number[]; k_max: number; k_neg?: number; scene_extent: number; n_edges_directed_union: number; sweep: Record<string, unknown> };
 }
 
 export interface FoamScene {
@@ -36,6 +37,9 @@ export interface FoamScene {
   texSvRgb: DataTexture; // RGB16F   N*k*D
   texAdjOff: DataTexture; // R32UI    N+1
   texAdjIdx: DataTexture; // R32UI    E
+  /** union adjacency over the curvature sweep (present when exported with --curved) */
+  texAdjOffU?: DataTexture;
+  texAdjIdxU?: DataTexture;
 }
 
 function view(buf: ArrayBuffer, s: Section): ArrayBufferView {
@@ -66,7 +70,12 @@ export async function loadScene(gl: WebGL2RenderingContext, url: string, onProgr
   const texSvRgb = dataTexture(gl, view(buf, S.svrgb), n * k * d, 3, gl.RGB16F, gl.RGB, gl.HALF_FLOAT, "svrgb");
   const texAdjOff = dataTexture(gl, view(buf, S.adjoff), n + 1, 1, gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT, "adjoff");
   const texAdjIdx = dataTexture(gl, view(buf, S.adjidx), manifest.n_edges_directed, 1, gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT, "adjidx");
-  return { manifest, n, k, d, pos: new Float32Array(pos), texPos, texNSigma, texSiteOff, texSvAxis, texSvRgb, texAdjOff, texAdjIdx };
+  const out: FoamScene = { manifest, n, k, d, pos: new Float32Array(pos), texPos, texNSigma, texSiteOff, texSvAxis, texSvRgb, texAdjOff, texAdjIdx };
+  if (S.adjoff_u && S.adjidx_u && manifest.curved) {
+    out.texAdjOffU = dataTexture(gl, view(buf, S.adjoff_u), n + 1, 1, gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT, "adjoff_u");
+    out.texAdjIdxU = dataTexture(gl, view(buf, S.adjidx_u), manifest.curved.n_edges_directed_union, 1, gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT, "adjidx_u");
+  }
+  return out;
 }
 
 /** benchmark.py:324 — start cell = argmin |p - eye|^2 - r^2 (brute force; ~0.1 ms per 100k cells). */

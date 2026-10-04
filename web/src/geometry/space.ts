@@ -147,6 +147,21 @@ export function planeEntryBefore(k: Kappa, A: number, B: number, tMax: number): 
   return h.has && !h.exit && h.t <= tMax ? h.t : -Infinity;
 }
 
+/** Fused exit/entry solve (mirror of planeExitEntryK): [first exit ≥ tRef, last entry ≤ tRef]. */
+export function planeExitEntry(k: Kappa, A: number, B: number, tRef: number): [number, number] {
+  if (k > 0) {
+    if (A * A + B * B < EPS * EPS) return [Infinity, -Infinity];
+    const phi = Math.atan2(B, A), TWO_PI = 2 * Math.PI;
+    const bx = phi - Math.PI / 2, bn = phi + Math.PI / 2;
+    return [bx + TWO_PI * Math.ceil((tRef - bx) / TWO_PI), bn + TWO_PI * Math.floor((tRef - bn) / TWO_PI)];
+  }
+  let t: number;
+  if (k === 0) { if (B === 0) return [Infinity, -Infinity]; t = -A / B; }
+  else { if (Math.abs(B) <= Math.abs(A)) return [Infinity, -Infinity]; t = 0.5 * Math.log((B - A) / (A + B)); }
+  if (B > 0) return [t >= tRef ? t : Infinity, -Infinity];
+  return [Infinity, t <= tRef ? t : -Infinity];
+}
+
 /** Signed plane value along the ray at t (for tests / inside checks). */
 export function planeValue(k: Kappa, A: number, B: number, t: number): number {
   return A * cs(k, t) + B * sn(k, t);
@@ -159,9 +174,18 @@ export function planeValue(k: Kappa, A: number, B: number, t: number): number {
 //   H³: with E = e^t: (A+B)E² + 2cosh(r)E + (A−B) ≥ 0, leading coeff < 0 ⇒ between roots
 //       E± = (−cosh r ± √(cosh²r − (A²−B²))) / (A+B), needs A²−B² ≤ cosh²r
 //   E³: |ō + t v̄ − p̄|² ≤ r² (ordinary quadratic; A,B unused)
+// CONDITIONING (same equations, rearranged for fp32 at small scale s): A = κ + A' with
+//   A' = −½⟨o'−p, o'−p⟩_κ  (a small, accurately computed chord term), so that
+//   H³: disc = sinh²r + 2A' − A'² + B²,  E = 1 + δ,  δ = (−2sinh²(r/2) − A' − B ± √disc)/(A+B)
+//   S³: R − cos r = (2A' + A'² + B²)/(R+1) + 2sin²(r/2),  α = 2 asin(√(ε/2)), ε = (R − cos r)/R
 // Returns the interval [t1,t2]; for S³ the one with t2 ≥ tMin closest to tMin.
 // ---------------------------------------------------------------------------
 export interface BallHit { has: boolean; t1: number; t2: number }
+
+/** log(1+x) accurate for small x (GLSL mirror uses the same series). */
+export function log1p(x: number): number {
+  return Math.abs(x) < 1e-4 ? x - 0.5 * x * x + x * x * x / 3 : Math.log(1 + x);
+}
 
 export function ballInterval(k: Kappa, o: V4, v: V4, p: V4, r: number, tMin = 0): BallHit {
   if (k === 0) {
@@ -173,26 +197,33 @@ export function ballInterval(k: Kappa, o: V4, v: V4, p: V4, r: number, tMin = 0)
     const s = Math.sqrt(disc);
     return { has: true, t1: (-qb - s) / 2, t2: (-qb + s) / 2 };
   }
-  const A = form(k, o, p), B = form(k, v, p);
+  const d0 = o[0] - p[0], d1 = o[1] - p[1], d2 = o[2] - p[2], d3 = o[3] - p[3];
+  const Ap = -0.5 * (k * d0 * d0 + d1 * d1 + d2 * d2 + d3 * d3); // A' = A − κ
+  const B = form(k, v, p);
   if (k < 0) {
-    const cr = Math.cosh(r);
-    const disc = cr * cr - (A * A - B * B);
+    const sr = Math.sinh(r), sh = Math.sinh(r / 2);
+    const disc = sr * sr + 2 * Ap - Ap * Ap + B * B;
     if (disc < 0) return { has: false, t1: 0, t2: 0 };
-    const s = Math.sqrt(disc);
-    const E1 = (-cr + s) / (A + B), E2 = (-cr - s) / (A + B); // A+B < 0 ⇒ E1 < E2, both > 0
-    return { has: true, t1: Math.log(E1), t2: Math.log(E2) };
+    const sq = Math.sqrt(disc);
+    const den = -1 + Ap + B; // A + B < 0
+    const num0 = -2 * sh * sh - Ap - B;
+    const dPlus = (num0 + sq) / den, dMinus = (num0 - sq) / den; // E = 1 + δ
+    const ta = log1p(dPlus), tb = log1p(dMinus);
+    return { has: true, t1: Math.min(ta, tb), t2: Math.max(ta, tb) };
   }
+  const A = 1 + Ap;
   const R = Math.hypot(A, B);
-  const cr = Math.cos(r);
-  if (R < cr) return { has: false, t1: 0, t2: 0 };
-  const alpha = Math.acos(Math.min(1, cr / R));
+  const sh = Math.sin(r / 2);
+  const RmC = (2 * Ap + Ap * Ap + B * B) / (R + 1) + 2 * sh * sh; // R − cos r
+  if (RmC < 0) return { has: false, t1: 0, t2: 0 };
+  const eps = RmC / R; // 1 − cos r / R
+  const alpha = 2 * Math.asin(Math.min(1, Math.sqrt(eps / 2)));
   const phi = Math.atan2(B, A);
   const TWO_PI = 2 * Math.PI;
-  const kk = Math.ceil((tMin - (phi + alpha)) / TWO_PI); // smallest k with phi+alpha+2πk ≥ tMin
+  const kk = Math.ceil((tMin - (phi + alpha)) / TWO_PI);
   return { has: true, t1: phi - alpha + TWO_PI * kk, t2: phi + alpha + TWO_PI * kk };
 }
 
-// ---------------------------------------------------------------------------
 // §3.6: embed a Euclidean point x̄ (already scaled by s = √|k|) at geodesic
 // distance |x̄| from the origin along direction x̂:  p = cs(|x̄|)·o + sn(|x̄|)·(0, x̂)
 // ---------------------------------------------------------------------------
