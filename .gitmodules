@@ -1,0 +1,3 @@
+[submodule "powerfoam"]
+	path = powerfoam
+	url = https://github.com/theialab/powerfoam.git

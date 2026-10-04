@@ -1,0 +1,12 @@
+build/
+build-*/
+web/dist/
+*.bin
+*.bin.gz
+*.bin.br
+output/
+data/
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
