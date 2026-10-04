@@ -16,7 +16,8 @@ refer to the writeup.
   `curved.py` (curved power diagram, κ sweep), `synth_scene.py`, `export_scene.py`,
   `ref_render.py` (numpy port of the Warp kernel), `ref_render_curved.py` (fp64 mirror of the
   curved shader), `render_reference.py` (runs INSIDE the Power Foam env on CUDA), `make_figures.py`,
-  `render_polyhedra.py` (matplotlib 3/4-view pictures of every fundamental polyhedron for the
+  `canonicalize_scene.py` (similarity transform of a whole checkpoint into metres / y-up / floor at 0,
+  with crop; see docs/TRAINING_VASTAI.md §8), `render_polyhedra.py` (matplotlib 3/4-view pictures of every fundamental polyhedron for the
   gallery, from `web/tools/domains.json` which `node web/tools/dump_domains.mjs` writes from the TS
   domain definitions; output `web/public/thumbs/*.png`). Re-run both after changing `topology/domain.ts`.
 - `web/` — Vite + TypeScript + WebGL2. `src/geometry/space.ts` ⇄ `shaders/geometry.glsl` are

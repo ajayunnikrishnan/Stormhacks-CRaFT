@@ -79,3 +79,26 @@ Only `model.pt`, `config.yaml` and `refs/` are needed (skip `test/` previews if 
 Vast bills until you click **Destroy** on the instance card. Do that last.
 
 Then tell Claude the folder name; export, retuning and the PSNR check are automated from there.
+
+## 8. What happens next (real captures, e.g. Mip-NeRF 360 treehill)
+
+COLMAP scenes are in arbitrary units with an arbitrary up axis, so the checkpoint is first put
+into CRaFT's canonical frame (metres, y up, floor at y = 0, origin under the camera centroid):
+
+```bash
+# on the instance, after training: reference renders + every training camera
+python render_reference.py -c output/<exp>/config.yaml --out output/<exp>/refs --n 4 --split test --dump-cameras
+python render_reference.py -c output/<exp>/config.yaml --out output/<exp>/refs_train --n 0 --split train --dump-cameras
+
+# on the Mac
+python tools/canonicalize_scene.py scenes/<exp>_raw --out scenes/<name> \
+    --cameras scenes/<exp>_raw/refs_train/cameras_all.json --cam-height 1.5 \
+    --crop-radius 12 --crop-below 1.5 --crop-above 12
+python tools/export_scene.py scenes/<name> --out web/public/scenes/<name> --curved --sweep 12 \
+    --kmax 0.015 --steiner-box 2.0 --steiner-iters 14 --centre-y 1.6 --walk-box -4 0 -4 4 3.2 4
+```
+
+`--cam-height` is the one assumption (handheld captures are shot at about 1.5 m); everything else
+is measured. `--walk-box` is the region the box universes tile and where the player walks; the
+rest of the crop stays visible through the walls. The 4 reference images are re-expressed in the
+canonical frame by the same transform, so the PSNR check in `web/harness.html` is unchanged.

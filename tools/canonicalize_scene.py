@@ -90,8 +90,41 @@ def transform_cameras(cams: list[dict], R: np.ndarray, s: float, c: np.ndarray) 
 def estimate_frame(ck: RawCheckpoint, cams: list[dict], cam_height_m: float, floor_pct: float = 3.0, min_opacity: float = 0.5) -> dict:
     eyes = np.array([c["eye"] for c in cams], np.float64)
     ups = np.array([c["up"] for c in cams], np.float64)
-    up = ups.mean(0); up /= np.linalg.norm(up)
-    R1 = rotation_from_to(up, np.array([0, 1.0, 0]))
+    pts = ck.points.astype(np.float64)
+    r = softplus(ck.radii.astype(np.float64)); sig = softplus(ck.density.astype(np.float64))
+    opaque = 1 - np.exp(-sig * 2 * r) > min_opacity  # optical depth across the cell
+    up = ups.mean(0); up /= np.linalg.norm(up)  # stage 1: cameras are held roughly level
+
+    def analyse(up):
+        R1 = rotation_from_to(up, np.array([0, 1.0, 0]))
+        E = eyes @ R1.T
+        centre_xz = E[:, [0, 2]].mean(0)
+        orbit = float(np.max(np.linalg.norm(E[:, [0, 2]] - centre_xz, axis=1)))
+        P = pts @ R1.T
+        near = np.linalg.norm(P[:, [0, 2]] - centre_xz, axis=1) < 1.5 * orbit
+        sel = opaque & near
+        if sel.sum() < 100: sel = near
+        # Surface cells have their centre ON the surface (dipole model), so the floor is the median
+        # centre height of the lowest layer: cells within two median radii above a low percentile
+        # (the percentile alone would follow floaters under the ground in real captures).
+        y = P[:, 1]
+        f_lo = float(np.percentile(y[sel], floor_pct))
+        rm = float(np.median(r[sel]))
+        layer = sel & (y >= f_lo - rm) & (y <= f_lo + 2 * rm)
+        floor_u = float(np.median(y[layer])) if layer.sum() >= 20 else f_lo
+        cam_h_u = float(E[:, 1].mean() - floor_u)
+        floor_cells = sel & (y < floor_u + 0.15 * cam_h_u) & (y > floor_u - 0.15 * cam_h_u)
+        return R1, E, centre_xz, orbit, floor_u, cam_h_u, floor_cells
+
+    R1, E, centre_xz, orbit, floor_u, cam_h_u, floor_cells = analyse(up)
+    n_floor = int(floor_cells.sum())
+    if n_floor >= 50:
+        # stage 2: refine up as the normal of the plane through the floor cells (handheld cameras tilt a few degrees)
+        Q = pts[floor_cells]; Q = Q - Q.mean(0)
+        nrm = np.linalg.svd(Q, full_matrices=False)[2][-1]
+        if nrm @ up < 0: nrm = -nrm
+        up = nrm / np.linalg.norm(nrm)
+        R1, E, centre_xz, orbit, floor_u, cam_h_u, floor_cells = analyse(up)
     # yaw: first camera's horizontal forward → −z
     f0 = np.cross(np.asarray(cams[0]["up"]), np.asarray(cams[0]["right"]))
     f0 = R1 @ f0; f0[1] = 0
@@ -99,20 +132,11 @@ def estimate_frame(ck: RawCheckpoint, cams: list[dict], cam_height_m: float, flo
     R = rot_y(-yaw) @ R1
     E = eyes @ R.T
     centre_xz = E[:, [0, 2]].mean(0)
-    orbit = float(np.max(np.linalg.norm(E[:, [0, 2]] - centre_xz, axis=1)))
-    P = ck.points.astype(np.float64) @ R.T
-    r = softplus(ck.radii.astype(np.float64)); sig = softplus(ck.density.astype(np.float64))
-    opaque = 1 - np.exp(-sig * 2 * r) > min_opacity  # optical depth across the cell
-    near = np.linalg.norm(P[:, [0, 2]] - centre_xz, axis=1) < 1.5 * orbit
-    sel = opaque & near
-    if sel.sum() < 100: sel = near
-    floor_u = float(np.percentile(P[sel, 1], floor_pct))
-    cam_h_u = float(E[:, 1].mean() - floor_u)
     s = cam_height_m / cam_h_u
     c = np.array([centre_xz[0], floor_u, centre_xz[1]])
     return {"R": R.tolist(), "scale": s, "centre": c.tolist(), "up_scene": up.tolist(), "yaw_deg": float(np.degrees(yaw)),
             "floor_scene_units": floor_u, "camera_height_scene_units": cam_h_u, "camera_height_m": cam_height_m,
-            "orbit_radius_m": orbit * s, "n_cameras": len(cams), "n_floor_cells": int(sel.sum())}
+            "orbit_radius_m": orbit * s, "n_cameras": len(cams), "n_floor_cells": int(floor_cells.sum())}
 
 
 def crop(ck: RawCheckpoint, radius: float | None, below: float | None, above: float | None) -> tuple[RawCheckpoint, np.ndarray]:
