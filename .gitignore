@@ -10,3 +10,8 @@ __pycache__/
 *.pyc
 .DS_Store
 .venv/
+web/node_modules/
+web/dist/
+tests/out/
+web/public/test/*.f32
+scenes/*/model.pt

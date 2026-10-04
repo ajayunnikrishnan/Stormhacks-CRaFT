@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Surveyor validation harness</title>
+    <style>
+      body { background: #111; color: #ddd; font-family: ui-monospace, Menlo, monospace; font-size: 13px; padding: 16px; }
+      table { border-collapse: collapse; margin-top: 12px; }
+      td, th { border: 1px solid #333; padding: 4px 10px; text-align: right; }
+      th { text-align: center; }
+      .ok { color: #7f7; } .bad { color: #f77; }
+      canvas { image-rendering: pixelated; margin: 4px; border: 1px solid #333; }
+      #imgs div { display: inline-block; vertical-align: top; text-align: center; margin-right: 8px; }
+    </style>
+  </head>
+  <body>
+    <h3>GPU walk vs CPU reference (tools/ref_render.py, numpy port of the Power Foam ray tracer)</h3>
+    <div id="log">loading…</div>
+    <table id="tbl"></table>
+    <div id="imgs"></div>
+    <canvas id="gl" width="8" height="8" style="display:none"></canvas>
+    <script type="module" src="/src/harness.ts"></script>
+  </body>
+</html>

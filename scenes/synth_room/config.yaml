@@ -1,0 +1,14 @@
+dataset: synthetic
+scene: synth_room
+num_texel_sites: 4
+sv_dof: 4
+bkgd_color:
+- 0.0
+- 0.0
+- 0.0
+is_pinhole: true
+synthetic:
+  spacing: 0.1
+  seed: 0
+  room_half: 4.0
+  room_height: 3.0

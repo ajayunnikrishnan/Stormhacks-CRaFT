@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Surveyor</title>
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: ui-monospace, Menlo, monospace; }
+      canvas { display: block; width: 100vw; height: 100vh; }
+      #hud { position: fixed; left: 12px; top: 12px; color: #ddd; font-size: 12px; line-height: 1.5; background: rgba(0,0,0,.55); padding: 8px 10px; border-radius: 6px; pointer-events: none; white-space: pre; }
+      #panel { position: fixed; right: 12px; top: 12px; color: #ddd; font-size: 12px; background: rgba(0,0,0,.55); padding: 8px 10px; border-radius: 6px; }
+      #panel label { display: block; margin: 4px 0; }
+      #status { position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%); color: #fff; font-size: 16px; }
+    </style>
+  </head>
+  <body>
+    <canvas id="gl"></canvas>
+    <div id="status">loading…</div>
+    <div id="hud"></div>
+    <div id="panel">
+      <label>scale <input id="scale" type="range" min="0.25" max="1" step="0.05" value="1" /> <span id="scaleV">1.00</span></label>
+      <label>camera <select id="cams"></select></label>
+      <label><input id="nearcull" type="checkbox" checked /> near-camera cull (repo parity)</label>
+      <label><input id="repopix" type="checkbox" /> repo pixel grid (edges at ±1)</label>
+      <div>WASD/QE move · drag to look · shift = fast</div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "surveyor-web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd web && npx vite --port 5173 --strictPort --host 127.0.0.1"],
+      "port": 5173
+    }
+  ]
+}
