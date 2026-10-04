@@ -8,6 +8,7 @@ import { createContext } from "./render/gl";
 import { loadScene } from "./foam/scene";
 import { Renderer } from "./render/renderer";
 import { repoCameraState } from "./game/camera";
+import { runGeometryProbe } from "./geometry/probe";
 
 const W = 160, H = 120;
 const params = new URLSearchParams(location.search);
@@ -66,5 +67,16 @@ async function main() {
   }
   (window as unknown as { harnessResults: unknown }).harnessResults = results;
   log.textContent = `done: ${results.length} cameras, ${W}x${H}, threshold 1e-2, near-cull on, repo pixel grid`;
+
+  // ---- geometry probe: GLSL (fp32) vs TS (fp64) ----
+  const probe = runGeometryProbe(gl);
+  (window as unknown as { probeResults: unknown }).probeResults = probe;
+  const ptbl = document.createElement("table");
+  ptbl.innerHTML = "<tr><th>function</th><th>κ</th><th>cases</th><th>max abs err</th><th>max rel err</th><th>mismatches</th></tr>" +
+    probe.map((r) => `<tr><td style="text-align:left">${r.name}</td><td>${r.kappa}</td><td>${r.n}</td><td>${r.maxAbsErr.toExponential(2)}</td><td>${r.maxRelErr.toExponential(2)}</td><td class="${r.mismatches ? "bad" : "ok"}">${r.mismatches}</td></tr>`).join("");
+  const h = document.createElement("h3");
+  h.textContent = "Geometry library: shaders/geometry.glsl vs src/geometry/space.ts";
+  document.body.appendChild(h);
+  document.body.appendChild(ptbl);
 }
 main().catch((e) => { log.textContent = String(e); console.error(e); });

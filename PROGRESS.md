@@ -43,7 +43,24 @@ SV pre-pass alone: 0.3–0.7 ms. CPU start-cell search: < 0.5 ms.
 => 30 fps at 1080p holds for most views on an integrated GPU; the worst view needs ~75% scale.
 Dynamic resolution scaling is in (manual slider now; auto in Phase 8).
 
-## Next — Phase 2: geometry library (κ ∈ {−1,0,+1}) in TS + GLSL, mirrored, with tests.
+## Phase 2 — Geometry library — DONE
+- `web/src/geometry/space.ts` and `web/shaders/geometry.glsl`, mirrored function by function
+  with equation numbers: form (1), distance (2, chord formula), geodesic (3), transported
+  direction (4), tangent toward (5), plane crossing (6) incl. S³ exit/entry periodicity,
+  ball interval (7) for all κ, embedding (§3.6), isometries / inverse / J-Gram-Schmidt (§3.7).
+- `web/tests/space.test.ts`: 27 vitest tests — on-model, Eq. 5 round trip, Eq. 6/7 vs
+  numeric roots (bisection), flat limit O(s²), isometry MᵀJM=J + inverse + distance
+  preservation, 10⁶-step bounded drift test (< 1e-5), transport composition.
+- `web/src/geometry/probe.ts` + `shaders/geometry_probe.frag`: GLSL vs TS on 4096 random
+  cases per κ per function; max rel err ≤ 2e-5 (fp32), 0 mismatches (see /harness.html).
+- Finding worth writing up: an unbounded random walk in H³ drifts ~12 units in 10⁶ steps;
+  there the hyperboloid coordinates reach ~1e5 and plain fp64 cancellation in ⟨x,x⟩ already
+  exceeds 1e-5. The game keeps W bounded by re-centring on domain crossings, so this is a
+  design constraint (keep the camera near the world origin), not a bug.
+- Note for the writeup: "MᵀJM = J" characterises isometries only for κ ≠ 0; for E³
+  (degenerate J) the condition is top row (1,0,0,0) + orthonormal rotation block.
+
+## Next — Phase 3: curved scene embedding + curved walker (primary rays, single scene).
 
 ## Known issues
 - No CUDA on the dev Mac; PSNR vs the real Warp kernel pending (needs lab GPU + checkpoint).

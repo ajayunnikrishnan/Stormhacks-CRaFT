@@ -1,10 +1,11 @@
 /** Loads GLSL sources at build time and resolves `#include "x.glsl"` against shaders/. */
 import common from "../../shaders/common.glsl?raw";
+import geometry from "../../shaders/geometry.glsl?raw";
 import svPrepass from "../../shaders/sv_prepass.frag?raw";
 import walkFlat from "../../shaders/walk_flat.frag?raw";
 import composite from "../../shaders/composite.frag?raw";
 
-const includes: Record<string, string> = { "common.glsl": common };
+const includes: Record<string, string> = { "common.glsl": common, "geometry.glsl": geometry };
 
 export function preprocess(src: string): string {
   return src.replace(/^#include\s+"([^"]+)"\s*$/gm, (_, name: string) => {
