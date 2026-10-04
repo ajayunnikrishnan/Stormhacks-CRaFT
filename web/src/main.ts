@@ -25,6 +25,7 @@ const modeEl = $<HTMLInputElement>("mode"), nearCullEl = $<HTMLInputElement>("ne
 const collideEl = $<HTMLInputElement>("collide"), lightEl = $<HTMLInputElement>("lighting"), fogEl = $<HTMLInputElement>("fog");
 const qualityEl = $<HTMLSelectElement>("quality"), fovEl = $<HTMLInputElement>("fov"), fovV = $("fovV"), sensEl = $<HTMLInputElement>("sens"), tintsEl = $<HTMLInputElement>("tints");
 const titleEl = $("title"), helpEl = $("help"), mapCanvas = $<HTMLCanvasElement>("map");
+const controlsEl = $("controls"), quizEl = $("quiz"), quizResultEl = $("quizResult");
 
 const params = new URLSearchParams(location.search);
 const sceneUrl = params.get("scene") ?? "scenes/synth_open/scene.json";
@@ -56,6 +57,7 @@ async function main() {
   let k = 0;
   let domain: Domain | null = null;
   let paused = false;
+  let quiz: { answer: DomainId; round: number; score: number } | null = null;
   const kPos = scene.manifest.curved?.k_max ?? 0.05;
   const kNeg = scene.manifest.curved?.k_neg ?? kPos;
   const sliderToK = (u: number) => (u < 0 ? -u * u * kNeg : u * u * kPos);
@@ -105,11 +107,12 @@ async function main() {
   topoEl.addEventListener("change", () => setTopology(topoEl.value as DomainId));
   curvEl.addEventListener("input", () => setK(sliderToK(Number(curvEl.value)), false));
   document.querySelectorAll<HTMLElement>(".chip").forEach((c) => c.addEventListener("click", () => { if (domain) setTopology("none"); setK(sliderToK(Number(c.dataset.k))); }));
-  $("openBtn").addEventListener("click", () => setTopology("none"));
+  $("openBtn").addEventListener("click", () => { if (domain) setTopology("none"); else setK(0); });
   scaleEl.addEventListener("input", () => (scaleV.textContent = Number(scaleEl.value).toFixed(2)));
   fovEl.addEventListener("input", () => { isoCam.fovDeg = Number(fovEl.value); flyCam.fovDeg = isoCam.fovDeg; fovV.textContent = `${fovEl.value}°`; });
   sensEl.addEventListener("input", () => { isoCam.sensitivity = Number(sensEl.value); });
-  tintsEl.addEventListener("change", () => { renderer.tintStrength = tintsEl.checked ? 0.35 : 0; });
+  const applyTints = () => { renderer.tintStrength = tintsEl.checked && !quiz ? 0.35 : 0; };
+  tintsEl.addEventListener("change", applyTints);
   isoCam.moveHook = (d) => { player.tryMove(isoCam, renderer.curved, d, curvatureParams(k).scale); };
 
   const PRESETS: Record<string, { scale: number; shadow: number; hops: number }> = { low: { scale: 0.5, shadow: 0.35, hops: 8 }, medium: { scale: 0.75, shadow: 0.5, hops: 12 }, high: { scale: 1, shadow: 0.5, hops: 16 } };
@@ -156,8 +159,63 @@ async function main() {
   $("galleryBtn").addEventListener("click", openGallery);
   $("helpClose").addEventListener("click", () => { helpEl.style.display = "none"; paused = false; });
 
+  // ---- guess-the-universe mode: a hidden random universe, untinted walls, map without the domain
+  const quizPicker = new Gallery(document.body, gallery.cards, (id) => submitGuess(id), {
+    title: "Which universe are you in?", subtitle: "Pick the gluing diagram that matches what you walked through. Arrows show how each wall is glued to its partner; the badge is the curvature.", closeLabel: "Keep exploring", showThumbs: false,
+  });
+  const quizRound = $("quizRound"), quizScore = $("quizScore");
+  const quizCards = gallery.cards;
+  const startRound = () => {
+    const prev = quiz?.answer;
+    let answer: DomainId;
+    do answer = quizCards[Math.floor(Math.random() * quizCards.length)].id; while (quizCards.length > 1 && answer === prev);
+    quiz = { answer, round: (quiz?.round ?? 0) + 1, score: quiz?.score ?? 0 };
+    setTopology(answer);
+    if (cameras.length) applyCamera(cameras[0]);
+    isoCam.yawBy(Math.random() * Math.PI * 2);
+    applyTints();
+    controlsEl.style.display = "none"; quizEl.style.display = "block"; quizResultEl.style.display = "none";
+    quizRound.textContent = `Round ${quiz.round}`; quizScore.textContent = `score ${quiz.score}`;
+    paused = false;
+  };
+  const submitGuess = (id: DomainId) => {
+    if (!quiz) return;
+    const ok = id === quiz.answer;
+    if (ok) quiz.score++;
+    const ans = quizCards.find((c) => c.id === quiz!.answer)!, g = quizCards.find((c) => c.id === id)!;
+    $("quizVerdict").textContent = ok ? "Correct!" : "Not quite.";
+    $("quizVerdict").className = ok ? "ok" : "bad";
+    $("quizGuessed").textContent = ok ? `You recognised ${ans.name}.` : `You guessed ${g.name}. You were actually in:`;
+    $("quizSvg").innerHTML = ans.svg.replace('width="150" height="150"', 'width="120" height="120"');
+    $("quizAnswerName").textContent = ans.name;
+    $("quizAnswerHint").textContent = `${ans.badge} · ${ans.orientable} · ${ans.hint}`;
+    quizScore.textContent = `score ${quiz.score}`;
+    applyTints(); // reveal: tint the walls so the pairing can be checked against the diagram
+    renderer.tintStrength = tintsEl.checked ? 0.35 : 0;
+    quizResultEl.style.display = "flex"; paused = true;
+  };
+  const endQuiz = () => {
+    quiz = null;
+    quizEl.style.display = "none"; quizResultEl.style.display = "none"; controlsEl.style.display = "block";
+    applyTints();
+    setTopology("none");
+  };
+  const goMenu = () => {
+    gallery.hide(); quizPicker.hide(); helpEl.style.display = "none";
+    if (quiz) endQuiz();
+    titleEl.style.display = "flex"; paused = true;
+  };
+  $("quizGuess").addEventListener("click", () => quizPicker.show());
+  $("quizNext").addEventListener("click", startRound);
+  $("quizMenu").addEventListener("click", goMenu);
+  $("quizResultMenu").addEventListener("click", goMenu);
+  $("helpMenu").addEventListener("click", goMenu);
+  $("brand").addEventListener("click", goMenu);
+
   const start = (mode: string) => {
     titleEl.style.display = "none"; paused = false;
+    if (mode === "quiz") { if (!quiz) startRound(); return; }
+    if (quiz) endQuiz();
     if (mode === "gallery") openGallery();
   };
   titleEl.querySelectorAll<HTMLElement>(".act").forEach((b) => b.addEventListener("click", () => start(b.dataset.mode!)));
@@ -166,13 +224,15 @@ async function main() {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
     if (e.code === "Escape") {
       if (gallery.visible) { gallery.hide(); return; }
+      if (quizPicker.visible) { quizPicker.hide(); return; }
+      if (quizResultEl.style.display === "flex") return;
       if (titleEl.style.display !== "none") return;
       const open = helpEl.style.display !== "flex";
       helpEl.style.display = open ? "flex" : "none"; paused = open;
       return;
     }
     if (titleEl.style.display !== "none") return;
-    if (e.code === "KeyG") { if (gallery.visible) gallery.hide(); else openGallery(); }
+    if (e.code === "KeyG") { if (quiz) quizPicker.toggle(); else if (gallery.visible) gallery.hide(); else openGallery(); }
     if (e.code === "KeyM") map.toggle();
     if (e.code === "Backquote") toggleDev();
   });
@@ -190,7 +250,8 @@ async function main() {
     },
     renderLive: (w: number, h: number, o?: Partial<RenderOptions>) => Array.from(renderer.renderCurvedToArray(isoState(w / h), { ...opts(), ...o }, w, h)),
     renderLit: (w: number, h: number) => { lighting.camFwdWorld = apply(isoCam.invW(), v4(0, 0, 0, -1)); return Array.from(renderer.renderLitToArray(isoState(w / h), opts(), lighting, w, h)); },
-    setK, setTopology, start,
+    setK, setTopology, start, goMenu,
+    quiz: () => (quiz ? { ...quiz } : null), guess: submitGuess, nextRound: startRound,
     setSlider: (u: number) => { curvEl.value = String(u); curvEl.dispatchEvent(new Event("input")); },
     setFog: (m: number, hops?: number) => { renderer.fogDistanceM = m; if (hops) renderer.maxHops = hops; },
     moveCamera: (dx: number, dy: number, dz: number) => { isoCam.moveBy([dx, dy, dz]); player.recentre(isoCam, domain); },
@@ -232,7 +293,7 @@ async function main() {
     const p = curvatureParams(k);
     const t0 = performance.now();
     if (modeEl.checked) {
-      if (!paused && titleEl.style.display === "none" && !gallery.visible) {
+      if (!paused && titleEl.style.display === "none" && !gallery.visible && !quizPicker.visible) {
         player.collisions = collideEl.checked;
         isoCam.update(dt, p.scale, !floorEl.checked);
         if (player.recentre(isoCam, domain) >= 0) hopsCrossed++;
@@ -244,7 +305,7 @@ async function main() {
       renderer.frameCurved(isoState(W / H), opts(), W, H, Number(scaleEl.value), lighting);
       const invWb = inverse(p.kappa, isoCam.Wb);
       const sh = scene.manifest.bbox_max.map((v, i) => ((v - scene.manifest.bbox_min[i]) / 2) * p.scale) as [number, number, number];
-      map.draw({ kappa: p.kappa, scale: p.scale, W: isoCam.W(), camWorld: isoCam.worldPos(), headingWorld: apply(invWb, v4(0, 0, 0, -1)), domain, sceneHalfModel: sh });
+      map.draw({ kappa: p.kappa, scale: p.scale, W: isoCam.W(), camWorld: isoCam.worldPos(), headingWorld: apply(invWb, v4(0, 0, 0, -1)), domain: quiz && quizResultEl.style.display !== "flex" ? null : domain, sceneHalfModel: sh });
     } else {
       flyCam.update(dt);
       renderer.frame(flyCam.state(W / H), opts(), W, H, Number(scaleEl.value));

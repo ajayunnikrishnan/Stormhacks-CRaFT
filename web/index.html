@@ -17,7 +17,10 @@
       button, select { font-family: var(--font); }
 
       /* brand */
-      #brand { position: fixed; left: 20px; top: 18px; padding: 10px 14px; pointer-events: none; }
+      #brand { position: fixed; left: 20px; top: 18px; padding: 10px 14px; cursor: pointer; transition: background .15s; }
+      #brand:hover { background: rgba(30, 34, 50, 0.85); }
+      #brand .s::after { content: " · menu"; color: var(--accent2); opacity: 0; transition: opacity .15s; }
+      #brand:hover .s::after { opacity: 1; }
       #brand .n { font-weight: 700; font-size: 18px; letter-spacing: 0.3px; }
       #brand .s { font-size: 12px; color: var(--muted); margin-top: 2px; }
 
@@ -64,6 +67,21 @@
       #title .act:hover { background: rgba(255,255,255,.12); transform: translateY(-1px); }
       #title .act.primary { background: linear-gradient(135deg, rgba(255,207,106,.3), rgba(255,207,106,.12)); border-color: rgba(255,207,106,.45); }
       #title .foot { margin-top: 28px; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
+      /* quiz */
+      #quiz { position: fixed; right: 20px; top: 18px; width: 300px; padding: 16px; display: none; }
+      #quiz h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); }
+      #quiz .score { font-size: 15px; font-weight: 600; color: var(--accent); }
+      #quiz p { margin: 8px 0 0; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+      #quizResult { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(0,0,0,.6); z-index: 26; }
+      #quizResult .inner { width: 440px; padding: 22px 26px; text-align: center; }
+      #quizResult h2 { margin: 0 0 4px; font-size: 24px; }
+      #quizResult h2.ok { color: #9fe8a5; } #quizResult h2.bad { color: #ff9f9f; }
+      #quizResult .ans { display: flex; gap: 14px; align-items: center; justify-content: center; margin: 14px 0 6px; text-align: left; }
+      #quizResult .ans svg { border-radius: 10px; }
+      #quizResult .ans b { display: block; font-size: 16px; }
+      #quizResult .ans span { color: var(--muted); font-size: 12.5px; }
+      #quizResult .guess { color: var(--muted); font-size: 13px; margin-bottom: 6px; }
+      #quizResult .row { display: flex; gap: 10px; }
       #status { position: fixed; left: 50%; top: 50%; transform: translate(-50%,-50%); color: #fff; font-size: 15px; z-index: 40; }
 
       /* developer panel (hidden; ⚙ or backquote) */
@@ -85,13 +103,14 @@
         <div class="t2">Exact Geodesic Ray Tracing of Radiance Foams in Constant-Curvature Spaces</div>
         <div class="actions">
           <button class="act primary" data-mode="explore">Explore the space</button>
+          <button class="act" data-mode="quiz">Guess the universe</button>
           <button class="act" data-mode="gallery">Choose a universe</button>
         </div>
-        <div class="foot">A captured scene, ray traced along exact geodesics of hyperbolic, flat and spherical space.<br>Walk with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, look by dragging, <kbd>Esc</kbd> for help.</div>
+        <div class="foot">A captured scene, ray traced along exact geodesics of hyperbolic, flat and spherical space.<br><b>Explore</b> bends the space freely · <b>Guess</b> drops you in a hidden universe and asks which one · <b>Choose</b> picks a universe to walk.<br>Walk with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, look by dragging, <kbd>Esc</kbd> for help.</div>
       </div>
     </div>
 
-    <div id="brand" class="card"><div class="n">CRaFT</div><div class="s">Curved Radiance Foam Tracing</div></div>
+    <div id="brand" class="card" title="back to the main menu"><div class="n">CRaFT</div><div class="s">Curved Radiance Foam Tracing</div></div>
 
     <div id="controls" class="card">
       <h3>Curvature of space</h3>
@@ -100,10 +119,17 @@
       <div class="scaleLabels"><span>hyperbolic</span><span>flat</span><span>spherical</span></div>
       <div id="curvV"></div>
       <button id="galleryBtn" class="btn primary">Choose a universe<small>3-torus, {4,3,5}, Poincaré dodecahedral space… (G)</small></button>
-      <button id="openBtn" class="btn">Open space<small>no tiling; bend it with the slider</small></button>
+      <button id="openBtn" class="btn">Open space<small>leave the tiling · reset to flat</small></button>
       <div class="chips"><button class="chip" data-k="-0.5">hyperbolic</button><button class="chip on" data-k="0">flat</button><button class="chip" data-k="0.5">spherical</button></div>
     </div>
 
+    <div id="quiz" class="card">
+      <h3>Guess the universe</h3>
+      <div class="score"><span id="quizRound">Round 1</span> · <span id="quizScore">score 0</span></div>
+      <p>You have been dropped into a hidden universe. Walk around, watch how the room repeats and how walls meet, then say which one it is. Wall tints are off and the map hides the domain.</p>
+      <button id="quizGuess" class="btn primary">Make a guess<small>pick from the gluing diagrams (G)</small></button>
+      <button id="quizMenu" class="btn">Main menu</button>
+    </div>
     <canvas id="map" class="card" title="click to enlarge"></canvas>
     <div id="hint" class="card"><b>W A S D</b> walk · <b>drag</b> look · <b>shift</b> run · <b>click the map</b> to enlarge · <b>Esc</b> help</div>
 
@@ -112,9 +138,15 @@
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk · <kbd>shift</kbd> run · drag the mouse to look</div>
       <div><kbd>G</kbd> universe gallery · <kbd>M</kbd> enlarge the map · <kbd>`</kbd> developer panel · <kbd>Esc</kbd> close</div>
       <div style="margin-top:10px;color:var(--muted);font-size:13px">The scene is a Power Foam reconstruction. Each cell is traversed with closed-form geodesic intersections (planes: Eq. 6, balls: Eq. 7) in H³, E³ or S³; closed universes are fundamental domains with face pairings. See docs/WRITEUP.md.</div>
-      <button id="helpClose" class="btn" style="margin-top:14px;text-align:center">Back</button>
+      <div style="display:flex;gap:10px"><button id="helpClose" class="btn" style="text-align:center">Back</button><button id="helpMenu" class="btn" style="text-align:center">Main menu</button></div>
     </div></div>
 
+    <div id="quizResult"><div class="inner card">
+      <h2 id="quizVerdict">Correct!</h2>
+      <div class="guess" id="quizGuessed"></div>
+      <div class="ans"><div id="quizSvg"></div><div><b id="quizAnswerName"></b><span id="quizAnswerHint"></span></div></div>
+      <div class="row"><button id="quizNext" class="btn primary" style="text-align:center">Next round</button><button id="quizResultMenu" class="btn" style="text-align:center">Main menu</button></div>
+    </div></div>
     <button id="devToggle" title="developer panel (`)">⚙</button>
     <div id="hud" class="card"></div>
     <div id="panel" class="card">

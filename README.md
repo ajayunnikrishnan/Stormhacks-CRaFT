@@ -4,7 +4,7 @@
 
 Hackathon entry for Huawei Custom Challenge #1, *Beyond Euclid*. A captured [Power Foam](https://github.com/theialab/powerfoam)
 scene is ray traced in WebGL2 along exact geodesics of hyperbolic, flat and spherical space, with a
-continuous curvature slider and a gallery of closed 3-manifolds (3-torus, half-turn, Klein,
+continuous curvature slider, a guess-the-universe quiz and a gallery of closed 3-manifolds (3-torus, half-turn, Klein,
 {4,3,5}, tesseract, Poincaré dodecahedral space, Seifert–Weber). Walk through it in first person;
 a map inset shows where you are in the Poincaré ball or on the stereographic sphere.
 
@@ -22,7 +22,7 @@ python tools/export_scene.py scenes/synth_open --out web/public/scenes/synth_ope
 python -m pytest tests/python -q
 
 # web app
-cd web && npm install && npx vite            # http://127.0.0.1:5173  (?mode=explore skips the title screen)
+cd web && npm install && npx vite            # http://127.0.0.1:5173  (?mode=explore|quiz|gallery skips the title screen)
 npx vitest run                               # geometry / topology / gameplay tests
 npx vite build                               # static site in web/dist
 ```
@@ -37,7 +37,7 @@ identical; the exporter derives frames, Steiner points and the curved adjacency 
 
 ## Controls
 
-WASD move (shift run) · drag to look · **G** universe gallery · **M** enlarge the map (or click it) ·
+WASD move (shift run) · drag to look · **G** universe gallery (in Guess mode: the answer picker) · **M** enlarge the map (or click it) · click the **CRaFT** badge for the main menu ·
 **`** developer panel · **Esc** help.
 
 ## Layout

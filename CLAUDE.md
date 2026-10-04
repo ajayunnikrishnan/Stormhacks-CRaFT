@@ -2,7 +2,7 @@
 
 Hackathon entry (Huawei "Beyond Euclid"): **CRaFT, Curved Radiance Foam Tracing** — *Exact Geodesic
 Ray Tracing of Radiance Foams in Constant-Curvature Spaces*. A WebGL2 first-person explorer that walks
-a captured Power Foam scene along exact geodesics of H³/E³/S³, with a curvature slider, a gallery of
+a captured Power Foam scene along exact geodesics of H³/E³/S³, with a curvature slider, a guess-the-universe quiz, a gallery of
 closed universes and a map inset. (The earlier game layer — beacons, lamps, light meter, laser,
 levels — was removed at the user's request on 2026-10-04; the maths lives on in `game/tools.ts` and
 the lighting passes stay in the renderer behind the developer panel.) Read `PROGRESS.md` first for
@@ -30,7 +30,7 @@ refer to the writeup.
 ```bash
 . .venv/bin/activate && python -m pytest tests/python -q          # 22 tests
 cd web && npx tsc --noEmit && npx vitest run                       # 67 tests
-cd web && npx vite                                                 # http://127.0.0.1:5173 (?level=tutorial|lamps|home|exam|sandbox)
+cd web && npx vite                                                 # http://127.0.0.1:5173 (?mode=explore|quiz|gallery)
 python tools/synth_scene.py --out scenes/synth_open --open
 python tools/export_scene.py scenes/synth_open --out web/public/scenes/synth_open --curved --sweep 12 --kmax 0.042 --steiner-box 2.0 --steiner-iters 14 --centre-y 1.6
 ```

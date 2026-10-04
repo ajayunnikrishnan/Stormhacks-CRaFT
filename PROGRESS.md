@@ -2,7 +2,9 @@
 
 > 2026-10-04: at the user's request the game layer (beacons, lamps, light meter, laser,
 > flashlight, compass dial, levels, exam) was removed from the app. CRaFT ships as a first-person
-> explorer: title screen, curvature slider, universe gallery, click-to-enlarge map. Phases 5–7 below
+> explorer: title screen, curvature slider, universe gallery, click-to-enlarge map, and a
+> "Guess the universe" quiz (random hidden universe, untinted walls, map without the domain, pick
+> the gluing diagram, reveal + running score) that replaces the old exam level. Phases 5–7 below
 > describe code that is partly retired; the maths and tests remain.
 
 ## Phase 0 — Recon — DONE (commit a111efd)

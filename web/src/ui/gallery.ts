@@ -88,10 +88,12 @@ export function buildCards(flatHalf: [number, number, number]): GalleryCard[] {
   });
 }
 
+export interface GalleryOptions { title?: string; subtitle?: string; closeLabel?: string; showThumbs?: boolean }
+
 export class Gallery {
   el: HTMLDivElement;
   thumbs = new Map<DomainId, string>();
-  constructor(root: HTMLElement, readonly cards: GalleryCard[], readonly onPick: (id: DomainId) => void) {
+  constructor(root: HTMLElement, readonly cards: GalleryCard[], readonly onPick: (id: DomainId) => void, readonly opts: GalleryOptions = {}) {
     this.el = document.createElement("div");
     this.el.style.cssText = "position:fixed;inset:0;background:rgba(3,4,8,.82);backdrop-filter:blur(10px);display:none;align-items:center;justify-content:center;font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#e9ecf3;z-index:20";
     root.appendChild(this.el);
@@ -100,13 +102,14 @@ export class Gallery {
   render(hideNames = false) {
     const grid = this.cards.map((c) => {
       const thumb = this.thumbs.get(c.id);
+      const showThumbs = this.opts.showThumbs !== false;
       return `<div data-id="${c.id}" class="gcard" style="background:rgba(22,25,38,.9);border-radius:14px;padding:12px;width:208px;cursor:pointer;border:1px solid rgba(255,255,255,.08);transition:border-color .15s,transform .15s" onmouseover="this.style.borderColor='rgba(255,207,106,.6)';this.style.transform='translateY(-2px)'" onmouseout="this.style.borderColor='rgba(255,255,255,.08)';this.style.transform=''">
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><span style="background:${c.badge === "H³" ? "#2a5bd7" : c.badge === "S³" ? "#d7742a" : c.badge === "E³" ? "#3f8f4a" : "#555"};padding:2px 7px;border-radius:6px;font-size:11px;font-weight:600">${c.badge}</span><b style="font-size:13px">${hideNames ? "?" : c.name}</b></div>
-        <div style="display:flex;gap:6px"><div style="border-radius:8px;overflow:hidden;width:92px;height:92px">${c.svg.replace('width="150" height="150"', 'width="92" height="92"')}</div><div style="width:92px;height:92px;background:#000;border-radius:8px;overflow:hidden">${thumb ? `<img src="${thumb}" style="width:92px;height:92px;object-fit:cover">` : '<div style="color:#667;font-size:10px;padding:34px 6px;text-align:center">rendering…</div>'}</div></div>
+        <div style="display:flex;gap:6px"><div style="border-radius:8px;overflow:hidden;width:${showThumbs ? 92 : 184}px;height:92px">${c.svg.replace('width="150" height="150"', showThumbs ? 'width="92" height="92"' : 'width="184" height="92" preserveAspectRatio="xMidYMid meet"')}</div>${showThumbs ? `<div style="width:92px;height:92px;background:#000;border-radius:8px;overflow:hidden">${thumb ? `<img src="${thumb}" style="width:92px;height:92px;object-fit:cover">` : '<div style="color:#667;font-size:10px;padding:34px 6px;text-align:center">rendering…</div>'}</div>` : ""}</div>
         <div style="font-size:10.5px;color:#9aa3b5;margin-top:8px">${hideNames ? "" : c.orientable}</div>
         <div style="font-size:11.5px;color:#d8dde8;margin-top:3px;line-height:1.4">${hideNames ? "identify this space by walking through it" : c.hint}</div></div>`;
     }).join("");
-    this.el.innerHTML = `<div style="max-width:1140px;padding:10px"><div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px"><div><h3 style="margin:0;font-size:22px;font-weight:700">Choose a universe</h3><div style="font-size:12.5px;color:#9aa3b5;margin-top:4px">Gluing diagrams and thumbnails are generated from the same face-pairing data the ray walker uses; the coloured walls in-world match the diagram.</div></div><button id="galleryClose" style="background:rgba(255,255,255,.08);color:#e9ecf3;border:1px solid rgba(255,255,255,.1);padding:8px 14px;border-radius:10px;cursor:pointer;font-family:inherit">Close</button></div><div style="display:flex;flex-wrap:wrap;gap:12px">${grid}</div></div>`;
+    this.el.innerHTML = `<div style="max-width:1140px;padding:10px"><div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:14px"><div><h3 style="margin:0;font-size:22px;font-weight:700">${this.opts.title ?? "Choose a universe"}</h3><div style="font-size:12.5px;color:#9aa3b5;margin-top:4px">${this.opts.subtitle ?? "Gluing diagrams and thumbnails are generated from the same face-pairing data the ray walker uses; the coloured walls in-world match the diagram."}</div></div><button id="galleryClose" style="background:rgba(255,255,255,.08);color:#e9ecf3;border:1px solid rgba(255,255,255,.1);padding:8px 14px;border-radius:10px;cursor:pointer;font-family:inherit">${this.opts.closeLabel ?? "Close"}</button></div><div style="display:flex;flex-wrap:wrap;gap:12px">${grid}</div></div>`;
     this.el.querySelectorAll<HTMLElement>(".gcard").forEach((c) => c.addEventListener("click", () => { this.onPick(c.dataset.id as DomainId); this.hide(); }));
     this.el.querySelector("#galleryClose")!.addEventListener("click", () => this.hide());
   }
