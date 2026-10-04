@@ -29,7 +29,14 @@ const titleEl = $("title"), helpEl = $("help"), mapCanvas = $<HTMLCanvasElement>
 const controlsEl = $("controls"), quizEl = $("quiz"), quizResultEl = $("quizResult");
 
 const params = new URLSearchParams(location.search);
-const sceneUrl = params.get("scene") ?? "scenes/synth_open/scene.json";
+/** Named scenes. `?scene=<id>` picks one (a raw path still works for the harness). */
+const SCENES = [
+  { id: "synthetic", name: "Synthetic room", url: "scenes/synth_open/scene.json", desc: "procedural test scene: floor, pillars, a sphere" },
+  { id: "treehill", name: "Treehill", url: "scenes/treehill/scene.json", desc: "Mip-NeRF 360 capture, trained with Power Foam" },
+];
+const sceneParam = params.get("scene") ?? "synthetic";
+const currentScene = SCENES.find((s) => s.id === sceneParam);
+const sceneUrl = currentScene ? currentScene.url : sceneParam.includes("/") ? sceneParam : SCENES[0].url;
 
 const TOPO_LABELS: Record<DomainId, string> = {
   none: "open space", torus3: "3-torus", halfturn: "half-turn space", klein: "Klein space",
@@ -231,6 +238,16 @@ async function main() {
     if (mode === "gallery") openGallery();
   };
   titleEl.querySelectorAll<HTMLElement>(".act").forEach((b) => b.addEventListener("click", () => start(b.dataset.mode!)));
+  // scene picker: switching reloads the page with ?scene=<id> (scenes are loaded once at startup)
+  const scenesEl = $("scenes");
+  for (const sc of SCENES) {
+    const b = document.createElement("button");
+    b.className = "scene" + (sc.url === sceneUrl ? " on" : "");
+    b.innerHTML = `<b>${sc.name}</b><small>${sc.desc}</small>`;
+    b.addEventListener("click", () => { if (sc.url === sceneUrl) return; const q = new URLSearchParams(location.search); q.set("scene", sc.id); location.search = q.toString(); });
+    scenesEl.appendChild(b);
+    if (sc.url !== sceneUrl) fetch(sc.url, { method: "HEAD" }).then((r) => { if (!r.ok) throw 0; }).catch(() => { b.disabled = true; b.querySelector("small")!.textContent = "not exported yet"; });
+  }
 
   window.addEventListener("keydown", (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
