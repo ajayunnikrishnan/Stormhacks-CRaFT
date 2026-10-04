@@ -44,14 +44,19 @@ from pf_common import (
 )
 
 
-def prepare_scene(scene_dir: Path, steiner: bool = True, seed: int = 0) -> tuple[FoamScene, dict]:
+def prepare_scene(scene_dir: Path, steiner: bool = True, seed: int = 0, steiner_box_pad: float | None = None, steiner_iters: int = 10) -> tuple[FoamScene, dict]:
     t0 = time.time()
     ck = load_checkpoint(scene_dir)
     s = activate(ck)
     n_scene = s.n
     info = {"n_scene_cells": int(n_scene), "k": int(s.k), "d": int(s.d)}
     if steiner:
-        st_pos, st_r = steiner_points(s.pos, s.radius, seed=seed)
+        box = None
+        if steiner_box_pad is not None:
+            lo, hi = s.pos.min(0) - steiner_box_pad, s.pos.max(0) + steiner_box_pad
+            box = (lo, hi)
+            info["steiner_box"] = [lo.tolist(), hi.tolist()]
+        st_pos, st_r = steiner_points(s.pos, s.radius, iterations=steiner_iters, seed=seed, sample_box=box)
         s = append_steiner(s, st_pos, st_r)
         info["n_steiner_cells"] = int(st_pos.shape[0])
     else:
@@ -216,9 +221,11 @@ def main():
     ap.add_argument("--kmax", type=float, default=None, help="max |k| in 1/m² (default: S³ hemisphere limit)")
     ap.add_argument("--sweep", type=int, default=16, help="sweep samples per sign")
     ap.add_argument("--kneg", type=float, default=None, help="max |k| on the H³ side (default 4·kmax)")
+    ap.add_argument("--steiner-box", type=float, default=None, help="sample Steiner candidates uniformly in the scene bbox padded by this many metres (fills a domain around open scenes)")
+    ap.add_argument("--steiner-iters", type=int, default=10)
     args = ap.parse_args()
     scene_dir = Path(args.scene_dir)
-    s, info = prepare_scene(scene_dir, steiner=not args.no_steiner, seed=args.seed)
+    s, info = prepare_scene(scene_dir, steiner=not args.no_steiner, seed=args.seed, steiner_box_pad=args.steiner_box, steiner_iters=args.steiner_iters)
     if args.verify:
         info["verify"] = verify_adjacency(s)
         print("verify:", info["verify"])

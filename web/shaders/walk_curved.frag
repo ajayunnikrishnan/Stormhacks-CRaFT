@@ -18,7 +18,7 @@ precision highp usampler2D;
 #include "common.glsl"
 #include "geometry.glsl"
 
-#define MAX_STEPS 512
+#define MAX_STEPS 2048
 #define MAX_NEIGHBOURS 1024
 #define MAX_K 8
 #define SOFT_VORONOI_TEMP 10.0   // raytrace.py:39
@@ -43,6 +43,39 @@ uniform bool  uRepoPixelGrid; // camera.py grid (edges at ±1) for parity tests;
 uniform vec4  uRayO;          // camera position in world model coords = W⁻¹ o
 uniform mat4  uInvW;          // camera → world isometry (W⁻¹)
 uniform vec3  uBackground;
+
+// ---- topology (§3.8): fundamental domain faces and pairings ----
+#define MAX_FACES 12
+#define LOC_GRID 32
+uniform int   uFaceCount;              // 0 = open space
+uniform vec4  uFaceW[MAX_FACES];       // covectors: inside ⇔ w·x ≤ 0
+uniform mat4  uFaceG[MAX_FACES];       // isometry applied to a ray exiting face f (maps f → partner)
+uniform mat4  uFaceLocInv[MAX_FACES];  // world → PARTNER face chart frame (for the lookup grid)
+uniform int   uFacePartner[MAX_FACES];
+uniform float uFaceChartHalf[MAX_FACES]; // chart half-extent of the PARTNER face
+uniform int   uMaxHops;
+uniform usampler2D uLocGrid;           // R32UI: face*G*G + j*G + i → cell id
+
+float cellValue(float kk, vec4 a, vec4 x) { return kk * a.x * x.x + dot(a.yzw, x.yzw); }
+
+// Steepest ascent on ⟨x,a_i⟩' from a guess (grid entry); a handful of steps in practice.
+int locateCell(int guess, vec4 x, float kk) {
+  int c = guess;
+  float best = cellValue(kk, fetch4(uA, c), x);
+  for (int it = 0; it < 32; ++it) {
+    int a = int(fetchU(uAdjOff, c)), b = int(fetchU(uAdjOff, c + 1));
+    int bj = -1;
+    for (int q = 0; q < MAX_NEIGHBOURS; ++q) {
+      if (a + q >= b) break;
+      int j = int(fetchU(uAdjIdx, a + q));
+      float vj = cellValue(kk, fetch4(uA, j), x);
+      if (vj > best + 1e-7) { best = vj; bj = j; }
+    }
+    if (bj < 0) break;
+    c = bj;
+  }
+  return c;
+}
 
 out vec4 oColor;
 
@@ -69,11 +102,13 @@ void main() {
   vec3 rgb = vec3(0.0);
   float logT = 0.0;
   int prim = uStart;
-  float ptNear = 0.0;                              // arc length at which the ray entered `prim`
+  float ptNear = 0.0;                              // arc length (since the last crossing) at which the ray entered `prim`
+  float tTotal = 0.0;                              // arc length accumulated over previous domain hops
+  int hops = 0;
 
   for (int step = 0; step < MAX_STEPS; ++step) {
     float trans = exp(logT);
-    if (trans < uThreshold || prim == INT_MAX_ID || ptNear > uTMax) break;
+    if (trans < uThreshold || prim == INT_MAX_ID || tTotal + ptNear > uTMax) break;
 
     vec4 ai = fetch4(uA, prim);
     vec2 rr = fetch4(uRad, prim).xy;
@@ -106,14 +141,22 @@ void main() {
     }
     if (ptFar >= 1e29) next = INT_MAX_ID;
 
+    // domain faces: does the ray leave the fundamental domain before leaving the cell?
+    int exitFace = -1;
+    float tDom = 1e30;
+    for (int f = 0; f < MAX_FACES; ++f) {
+      if (f >= uFaceCount) break;
+      float te = planeExitAfterK(k, dot(uFaceW[f], o), dot(uFaceW[f], v), ptNear);
+      if (te < tDom) { tDom = te; exitFace = f; }
+    }
+    bool crossing = exitFace >= 0 && tDom < ptFar;
+    if (crossing) { tFar = min(tFar, tDom); ptFar = tDom; }
+
     vec4 ns = fetch4(uNSigma, prim);
     vec3 nflat = ns.xyz;
     float sigma = ns.w / uScale;                    // 1/m → 1/unit
-    if (!hit || tNear > tFar || sigma * uScale < 1e-3) {   // raytrace.py:208 (σ test in 1/m like the repo)
-      prim = next;
-      ptNear = max(ptNear, ptFar);
-      continue;
-    }
+    bool shade = hit && tNear <= tFar && sigma * uScale >= 1e-3;   // raytrace.py:208 (σ test in 1/m like the repo)
+    if (shade) {
 
     // ---- locally flat shading in the cell frame (§3.11) ----
     mat4 Minv = inverseIsometryK(k, translationToK(k, P));
@@ -161,14 +204,38 @@ void main() {
     float tauNear = 0.0;
     if (dp1 >= 0.0) tauFar = min(tauSurf, tauFar); else tauNear = max(tauSurf, tauNear);  // raytrace.py:225
 
-    prim = next;
-    ptNear = max(ptNear, ptFar);
     float dt = tauFar - tauNear;
-    if (hit && dt > 0.0) {
+    if (dt > 0.0) {
       float delta = -sigma * dt;
       float alpha = 1.0 - exp(delta);
       rgb += colour * alpha * trans;
       logT += delta;
+    }
+    } // shade
+
+    if (crossing) {
+      if (hops >= uMaxHops) break;
+      hops++;
+      tTotal += tDom;
+      // transport the ray state through the pairing (points and tangents alike), re-normalise
+      mat4 g = uFaceG[exitFace];
+      vec4 x = geodesicK(k, o, v, tDom);
+      vec4 dv = geodesicDirK(k, o, v, tDom);
+      vec4 o2 = projectK(k, g * x);
+      vec4 v2 = tangentializeK(k, o2, g * dv);
+      // nudge inward so the partner face is not re-detected at t = 0
+      o = projectK(k, geodesicK(k, o2, v2, 1e-5));
+      v = tangentializeK(k, o, geodesicDirK(k, o2, v2, 1e-5));
+      ptNear = 0.0;
+      // point location on the partner face: chart lookup, then a short ascent
+      vec3 l = logAtOriginK(k, uFaceLocInv[exitFace] * o);
+      vec2 uv = clamp(l.xy / uFaceChartHalf[exitFace] * 0.5 + 0.5, 0.0, 0.999);
+      ivec2 gij = ivec2(uv * float(LOC_GRID));
+      int guess = int(fetchU(uLocGrid, uFacePartner[exitFace] * LOC_GRID * LOC_GRID + gij.y * LOC_GRID + gij.x));
+      prim = locateCell(guess, o, kk);
+    } else {
+      prim = next;
+      ptNear = max(ptNear, ptFar);
     }
   }
   rgb += uBackground * exp(logT);

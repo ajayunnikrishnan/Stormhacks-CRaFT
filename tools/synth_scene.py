@@ -44,7 +44,7 @@ def _grid_quad(origin, u_axis, v_axis, nu, nv, normal, spacing, rng):
     return p, n
 
 
-def _surfaces(spacing: float, rng: np.random.Generator):
+def _surfaces(spacing: float, rng: np.random.Generator, open_scene: bool = False):
     H, L = ROOM_HALF, ROOM_H
     nx = int(round(2 * H / spacing))
     ny = int(round(L / spacing))
@@ -52,12 +52,24 @@ def _surfaces(spacing: float, rng: np.random.Generator):
     ex, ey, ez = np.eye(3)
     # floor (normal +y, dense half below), ceiling (normal -y)
     parts.append((*_grid_quad(np.array([-H, 0.0, -H]), ex, ez, nx, nx, ey, spacing, rng), "floor"))
-    parts.append((*_grid_quad(np.array([-H, L, -H]), ex, ez, nx, nx, -ey, spacing, rng), "ceiling"))
-    # walls, normals pointing into the room
-    parts.append((*_grid_quad(np.array([-H, 0.0, -H]), ex, ey, nx, ny, ez, spacing, rng), "wall_n"))  # z=-H
-    parts.append((*_grid_quad(np.array([-H, 0.0, H]), ex, ey, nx, ny, -ez, spacing, rng), "wall_s"))  # z=+H
-    parts.append((*_grid_quad(np.array([-H, 0.0, -H]), ez, ey, nx, ny, ex, spacing, rng), "wall_w"))  # x=-H
-    parts.append((*_grid_quad(np.array([H, 0.0, -H]), ez, ey, nx, ny, -ex, spacing, rng), "wall_e"))  # x=+H
+    if not open_scene:
+        parts.append((*_grid_quad(np.array([-H, L, -H]), ex, ez, nx, nx, -ey, spacing, rng), "ceiling"))
+        # walls, normals pointing into the room
+        parts.append((*_grid_quad(np.array([-H, 0.0, -H]), ex, ey, nx, ny, ez, spacing, rng), "wall_n"))  # z=-H
+        parts.append((*_grid_quad(np.array([-H, 0.0, H]), ex, ey, nx, ny, -ez, spacing, rng), "wall_s"))  # z=+H
+        parts.append((*_grid_quad(np.array([-H, 0.0, -H]), ez, ey, nx, ny, ex, spacing, rng), "wall_w"))  # x=-H
+        parts.append((*_grid_quad(np.array([H, 0.0, -H]), ez, ey, nx, ny, -ex, spacing, rng), "wall_e"))  # x=+H
+    else:
+        # landmarks so copies are distinguishable: a tall thin post at a corner and a low wall segment
+        pc2, pr2 = np.array([-3.0, 0.0, -3.0]), 0.15
+        na2 = int(round(2 * np.pi * pr2 / spacing))
+        ang2 = (np.arange(na2) + 0.5) / na2 * 2 * np.pi
+        rn2 = np.stack([np.cos(ang2), np.zeros(na2), np.sin(ang2)], -1)
+        ny2 = int(round(2.4 / spacing))
+        ys2 = (np.arange(ny2) + 0.5) * spacing
+        parts.append((pc2 + pr2 * np.tile(rn2, (ny2, 1)) + np.repeat(ys2, na2)[:, None] * np.array([0, 1.0, 0]), np.tile(rn2, (ny2, 1)), "post"))
+        parts.append((*_grid_quad(np.array([1.0, 0.0, 3.0]), ex, ey, int(round(2.0 / spacing)), int(round(1.0 / spacing)), -ez, spacing, rng), "lowwall"))
+        parts.append((*_grid_quad(np.array([1.0, 0.0, 3.0 + spacing * 0.5]), ex, ey, int(round(2.0 / spacing)), int(round(1.0 / spacing)), ez, spacing, rng), "lowwall"))
     # box 1.2 x 1.0 x 1.2 at (2, 0, -2), normals outward
     bc, bs = np.array([2.0, 0.5, -2.0]), np.array([0.6, 0.5, 0.6])
     for axis in range(3):
@@ -110,12 +122,16 @@ def _base_colour(kind: str, p: np.ndarray) -> np.ndarray:
         c[:] = [0.15, 0.65, 0.65]
     elif kind == "pillar":
         c[:] = [0.65, 0.25, 0.20]
+    elif kind == "post":
+        c[:] = [0.95, 0.85, 0.20]
+    elif kind == "lowwall":
+        c[:] = [0.55, 0.30, 0.60]
     return c
 
 
-def make_scene(spacing: float, k: int, d: int, seed: int = 0) -> tuple[RawCheckpoint, dict]:
+def make_scene(spacing: float, k: int, d: int, seed: int = 0, open_scene: bool = False) -> tuple[RawCheckpoint, dict]:
     rng = np.random.default_rng(seed)
-    parts = _surfaces(spacing, rng)
+    parts = _surfaces(spacing, rng, open_scene)
     P = np.concatenate([p for p, _, _ in parts], 0)
     Nrm = np.concatenate([n for _, n, _ in parts], 0)
     C = np.concatenate([_base_colour(kind, p) for p, _, kind in parts], 0)
@@ -155,7 +171,7 @@ def make_scene(spacing: float, k: int, d: int, seed: int = 0) -> tuple[RawCheckp
         texel_height=texel_height.astype(np.float32),
         config={
             "dataset": "synthetic",
-            "scene": "synth_room",
+            "scene": "synth_open" if open_scene else "synth_room",
             "num_texel_sites": k,
             "sv_dof": d,
             "bkgd_color": [0.0, 0.0, 0.0],
@@ -197,8 +213,9 @@ def main():
     ap.add_argument("--k", type=int, default=4)
     ap.add_argument("--d", type=int, default=4)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--open", action="store_true", help="floor + objects only (no walls/ceiling) so tiled copies are visible")
     args = ap.parse_args()
-    ck, extra = make_scene(args.spacing, args.k, args.d, args.seed)
+    ck, extra = make_scene(args.spacing, args.k, args.d, args.seed, open_scene=args.open)
     out = Path(args.out)
     save_checkpoint(out, ck)
     (out / "cameras.json").write_text(json.dumps(test_cameras(), indent=1))

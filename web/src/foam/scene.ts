@@ -3,32 +3,10 @@
  * and packs it into WebGL2 data textures. See docs/ARCHITECTURE.md §9 for the layout.
  */
 import { dataTexture, type DataTexture } from "../render/gl";
+import { parseScene, type SceneArrays, type SceneManifest, type RepoCamera } from "./sceneData";
+export type { SceneManifest, RepoCamera } from "./sceneData";
 
-export interface Section { offset: number; dtype: string; shape: number[]; nbytes: number }
-export interface RepoCamera { name: string; eye: number[]; right: number[]; up: number[]; width: number; height: number }
-export interface SceneManifest {
-  format: string;
-  n: number;
-  k: number;
-  d: number;
-  n_edges_directed: number;
-  bbox_min: number[];
-  bbox_max: number[];
-  bin: string;
-  bin_bytes: number;
-  sections: Record<string, Section>;
-  info: Record<string, unknown>;
-  cameras?: RepoCamera[];
-  curved?: { centre: number[]; k_max: number; k_neg?: number; scene_extent: number; n_edges_directed_union: number; sweep: Record<string, unknown> };
-}
-
-export interface FoamScene {
-  manifest: SceneManifest;
-  n: number;
-  k: number;
-  d: number;
-  /** CPU copies needed every frame (start-cell search). */
-  pos: Float32Array; // [N,4] xyz, r
+export interface FoamScene extends SceneArrays {
   /** GPU textures. */
   texPos: DataTexture; // RGBA32F  N
   texNSigma: DataTexture; // RGBA16F  N
@@ -42,44 +20,34 @@ export interface FoamScene {
   texAdjIdxU?: DataTexture;
 }
 
-function view(buf: ArrayBuffer, s: Section): ArrayBufferView {
-  const count = s.shape.reduce((a, b) => a * b, 1);
-  switch (s.dtype) {
-    case "float32": return new Float32Array(buf, s.offset, count);
-    case "float16": return new Uint16Array(buf, s.offset, count); // raw half bits
-    case "uint32": return new Uint32Array(buf, s.offset, count);
-    default: throw new Error(`unsupported dtype ${s.dtype}`);
-  }
-}
-
 export async function loadScene(gl: WebGL2RenderingContext, url: string, onProgress?: (msg: string) => void): Promise<FoamScene> {
   onProgress?.("fetching manifest");
   const base = url.replace(/\/[^/]*$/, "/");
   const manifest = (await (await fetch(url)).json()) as SceneManifest;
-  if (manifest.format !== "surveyor-foam-v1") throw new Error(`unknown scene format ${manifest.format}`);
   onProgress?.(`fetching ${(manifest.bin_bytes / 1e6).toFixed(1)} MB`);
   const buf = await (await fetch(base + manifest.bin)).arrayBuffer();
-  const S = manifest.sections;
-  const { n, k, d } = manifest;
-  const pos = view(buf, S.pos) as Float32Array;
+  const a = parseScene(manifest, buf);
+  const { n, k, d } = a;
   onProgress?.("uploading textures");
-  const texPos = dataTexture(gl, pos, n, 4, gl.RGBA32F, gl.RGBA, gl.FLOAT, "pos");
-  const texNSigma = dataTexture(gl, view(buf, S.nsigma), n, 4, gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT, "nsigma");
-  const texSiteOff = dataTexture(gl, view(buf, S.siteoff), n * k, 4, gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT, "siteoff");
-  const texSvAxis = dataTexture(gl, view(buf, S.svaxis), n * k * d, 3, gl.RGB16F, gl.RGB, gl.HALF_FLOAT, "svaxis");
-  const texSvRgb = dataTexture(gl, view(buf, S.svrgb), n * k * d, 3, gl.RGB16F, gl.RGB, gl.HALF_FLOAT, "svrgb");
-  const texAdjOff = dataTexture(gl, view(buf, S.adjoff), n + 1, 1, gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT, "adjoff");
-  const texAdjIdx = dataTexture(gl, view(buf, S.adjidx), manifest.n_edges_directed, 1, gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT, "adjidx");
-  const out: FoamScene = { manifest, n, k, d, pos: new Float32Array(pos), texPos, texNSigma, texSiteOff, texSvAxis, texSvRgb, texAdjOff, texAdjIdx };
-  if (S.adjoff_u && S.adjidx_u && manifest.curved) {
-    out.texAdjOffU = dataTexture(gl, view(buf, S.adjoff_u), n + 1, 1, gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT, "adjoff_u");
-    out.texAdjIdxU = dataTexture(gl, view(buf, S.adjidx_u), manifest.curved.n_edges_directed_union, 1, gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT, "adjidx_u");
+  const out: FoamScene = {
+    ...a,
+    texPos: dataTexture(gl, a.pos, n, 4, gl.RGBA32F, gl.RGBA, gl.FLOAT, "pos"),
+    texNSigma: dataTexture(gl, a.nsigma, n, 4, gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT, "nsigma"),
+    texSiteOff: dataTexture(gl, a.siteoff, n * k, 4, gl.RGBA16F, gl.RGBA, gl.HALF_FLOAT, "siteoff"),
+    texSvAxis: dataTexture(gl, a.svaxis, n * k * d, 3, gl.RGB16F, gl.RGB, gl.HALF_FLOAT, "svaxis"),
+    texSvRgb: dataTexture(gl, a.svrgb, n * k * d, 3, gl.RGB16F, gl.RGB, gl.HALF_FLOAT, "svrgb"),
+    texAdjOff: dataTexture(gl, a.adjOff, n + 1, 1, gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT, "adjoff"),
+    texAdjIdx: dataTexture(gl, a.adjIdx, manifest.n_edges_directed, 1, gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT, "adjidx"),
+  };
+  if (a.adjOffU && a.adjIdxU && manifest.curved) {
+    out.texAdjOffU = dataTexture(gl, a.adjOffU, n + 1, 1, gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT, "adjoff_u");
+    out.texAdjIdxU = dataTexture(gl, a.adjIdxU, manifest.curved.n_edges_directed_union, 1, gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT, "adjidx_u");
   }
   return out;
 }
 
 /** benchmark.py:324 — start cell = argmin |p - eye|^2 - r^2 (brute force; ~0.1 ms per 100k cells). */
-export function startCell(scene: FoamScene, eye: ArrayLike<number>): number {
+export function startCell(scene: SceneArrays, eye: ArrayLike<number>): number {
   const p = scene.pos;
   let best = 0;
   let bestV = Infinity;

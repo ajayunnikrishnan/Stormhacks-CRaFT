@@ -10,6 +10,8 @@ import { SHADERS, curvedVariant } from "./shaders";
 import { startCell, type FoamScene } from "../foam/scene";
 import { computeCurvedSites, curvatureParams, sceneCentre, startCellCurved, type CurvedSites } from "../foam/curved";
 import type { M4, V4 } from "../geometry/space";
+import type { Domain } from "../topology/domain";
+import { buildLocateGrid, LOC_GRID, type LocateGrid } from "../topology/locate";
 
 /** Flat camera (repo convention). */
 export interface CameraState {
@@ -54,6 +56,13 @@ export class Renderer {
   private texRad: DataTexture;
   private texAdjOffU: DataTexture;
   private texAdjIdxU: DataTexture;
+  // topology
+  domain: Domain | null = null;
+  private locate: LocateGrid | null = null;
+  private texLoc: DataTexture;
+  maxHops = 16;
+  /** Fog / step cutoff distance in metres (§3.9: fog also acts as the distance cutoff). */
+  fogDistanceM = 40;
 
   constructor(readonly gl: WebGL2RenderingContext, readonly scene: FoamScene) {
     this.quad = new FullscreenQuad(gl);
@@ -78,6 +87,50 @@ export class Renderer {
     // union adjacency (falls back to the flat graph if the export has no sweep)
     this.texAdjOffU = scene.texAdjOffU ?? scene.texAdjOff;
     this.texAdjIdxU = scene.texAdjIdxU ?? scene.texAdjIdx;
+    this.texLoc = dataTexture(gl, new Uint32Array(12 * LOC_GRID * LOC_GRID), 12 * LOC_GRID * LOC_GRID, 1, gl.R32UI, gl.RED_INTEGER, gl.UNSIGNED_INT, "locgrid");
+  }
+
+  /** Set (or clear) the fundamental domain; rebuilds the point-location grid for the current κ. */
+  setDomain(d: Domain | null) {
+    this.domain = d;
+    this.locate = null;
+    if (d) this.rebuildLocateGrid();
+  }
+
+  private rebuildLocateGrid() {
+    const d = this.domain;
+    if (!d) return;
+    const adjOff = this.scene.adjOffU ?? this.scene.adjOff, adjIdx = this.scene.adjIdxU ?? this.scene.adjIdx;
+    this.locate = buildLocateGrid(d, this.curved, adjOff, adjIdx, this.locate && this.locate.ids.length === d.faces.length * LOC_GRID * LOC_GRID ? this.locate : undefined);
+    const gl = this.gl;
+    const pad = new Uint32Array(TEX_W * Math.ceil((12 * LOC_GRID * LOC_GRID) / TEX_W));
+    pad.set(this.locate.ids);
+    gl.bindTexture(gl.TEXTURE_2D, this.texLoc.tex);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, TEX_W, pad.length / TEX_W, gl.RED_INTEGER, gl.UNSIGNED_INT, pad);
+  }
+
+  private bindDomain(p: Program) {
+    const d = this.domain;
+    const gl = this.gl;
+    if (!d || !this.locate) { p.u1i("uFaceCount", 0); p.u1i("uMaxHops", 0); p.tex("uLocGrid", 7, this.texLoc.tex); return; }
+    const n = d.faces.length;
+    const W = new Float32Array(12 * 4), G = new Float32Array(12 * 16), L = new Float32Array(12 * 16), partner = new Int32Array(12), half = new Float32Array(12);
+    for (let f = 0; f < n; f++) {
+      W.set(d.faces[f].w, f * 4);
+      G.set(d.faces[f].g, f * 16);
+      const pf = d.faces[f].partner;
+      L.set(d.faces[pf].invFrame, f * 16);
+      partner[f] = pf;
+      half[f] = this.locate.chartHalf[pf];
+    }
+    gl.uniform4fv(p.loc("uFaceW"), W);
+    gl.uniformMatrix4fv(p.loc("uFaceG"), false, G);
+    gl.uniformMatrix4fv(p.loc("uFaceLocInv"), false, L);
+    gl.uniform1iv(p.loc("uFacePartner"), partner);
+    gl.uniform1fv(p.loc("uFaceChartHalf"), half);
+    p.u1i("uFaceCount", n);
+    p.u1i("uMaxHops", this.maxHops);
+    p.tex("uLocGrid", 7, this.texLoc.tex);
   }
 
   /** Curvature in 1/m² (sign = κ). Recomputes a_i and radii and re-uploads two textures. */
@@ -93,6 +146,7 @@ export class Renderer {
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, TEX_W, rows, gl.RGBA, gl.FLOAT, padA);
     gl.bindTexture(gl.TEXTURE_2D, this.texRad.tex);
     gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, TEX_W, rows, gl.RG, gl.FLOAT, padR);
+    if (this.domain) this.rebuildLocateGrid();
   }
 
   // ---------------------------------------------------------------- timers
@@ -185,12 +239,13 @@ export class Renderer {
     p.u1i("uKappa", c.params.kappa); p.u1f("uScale", c.params.scale);
     p.u1i("uK", s.k); p.u1i("uStart", start); p.u1f("uThreshold", opts.threshold);
     p.u1i("uNearCull", opts.nearCull ? 1 : 0); p.u1i("uRepoPixelGrid", opts.repoPixelGrid ? 1 : 0);
-    p.u1f("uTMax", c.params.kappa > 0 ? 2 * Math.PI : 1e30);
+    p.u1f("uTMax", Math.min(c.params.kappa > 0 ? 2 * Math.PI : 1e30, this.fogDistanceM * c.params.scale));
     p.u2f("uResolution", w, h);
     p.u2f("uTanHalfFov", cam.tanHalfFov[0], cam.tanHalfFov[1]);
     p.u4fv("uRayO", Float32Array.from(cam.rayO));
     p.umat4("uInvW", Float32Array.from(cam.invW));
     p.u3f("uBackground", opts.background[0], opts.background[1], opts.background[2]);
+    this.bindDomain(p);
     this.beginTimer("walk"); this.quad.draw(); this.endTimer();
     return target;
   }

@@ -4,7 +4,7 @@
  * whenever the curvature slider moves (~N·30 flops, well under a millisecond per 25k cells).
  */
 import { type Kappa, cs, embedPoint, v4 } from "../geometry/space";
-import type { FoamScene } from "./scene";
+import type { SceneArrays } from "./sceneData";
 
 export interface CurvatureParams {
   /** curvature in 1/m²; sign gives κ, s = √|k| */
@@ -30,14 +30,14 @@ export interface CurvedSites {
 }
 
 /** Centre used for embedding: the manifest's curved.centre (bbox centre of scene cells). */
-export function sceneCentre(scene: FoamScene): Float64Array {
+export function sceneCentre(scene: SceneArrays): Float64Array {
   const c = (scene.manifest as unknown as { curved?: { centre: number[] } }).curved?.centre;
   if (c) return new Float64Array(c);
   const lo = scene.manifest.bbox_min, hi = scene.manifest.bbox_max;
   return new Float64Array([0.5 * (lo[0] + hi[0]), 0.5 * (lo[1] + hi[1]), 0.5 * (lo[2] + hi[2])]);
 }
 
-export function computeCurvedSites(scene: FoamScene, params: CurvatureParams, centre: Float64Array): CurvedSites {
+export function computeCurvedSites(scene: SceneArrays, params: CurvatureParams, centre: Float64Array): CurvedSites {
   const n = scene.n, k = params.kappa, s = params.scale;
   const A = new Float32Array(n * 4), rad = new Float32Array(n * 2);
   const p = scene.pos;

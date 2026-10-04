@@ -251,11 +251,14 @@ def _greedy_min_overlap_fps(sample_points, sample_radii, threshold, rng):
     return is_candidate
 
 
-def steiner_points(points: np.ndarray, radii: np.ndarray, iterations: int = 10, seed: int = 0):
+def steiner_points(points: np.ndarray, radii: np.ndarray, iterations: int = 10, seed: int = 0, sample_box: tuple | None = None):
     """benchmark.py:137 get_steiner_points. Returns (steiner_pos, steiner_radius_activated).
 
     Note: the repo returns raw (inverse-softplus) radii because it appends them to
     the model; we return activated radii and let callers decide.
+    sample_box=(lo, hi): sample candidates uniformly in that box instead of the repo's
+    Normal(mean, 0.5·std) — used to fill a fundamental domain around open scenes (§3.8),
+    where the Normal rule leaves the "sky" covered by a few huge, high-degree cells.
     """
     rng = np.random.default_rng(seed)
     points = np.asarray(points, np.float64)
@@ -269,7 +272,11 @@ def steiner_points(points: np.ndarray, radii: np.ndarray, iterations: int = 10, 
         all_r = np.concatenate([radii, st_r], 0)
         tree = cKDTree(all_pts)
         m = int(0.25 * points.shape[0])
-        samples = mean + 0.5 * std * rng.standard_normal((m, 3))
+        if sample_box is None:
+            samples = mean + 0.5 * std * rng.standard_normal((m, 3))
+        else:
+            lo, hi = np.asarray(sample_box[0], float), np.asarray(sample_box[1], float)
+            samples = lo + (hi - lo) * rng.uniform(size=(m, 3))
         kq = min(32, all_pts.shape[0])
         dists, idxs = tree.query(samples, k=kq)
         gap = dists - all_r[idxs]  # distance to sphere surface

@@ -118,6 +118,29 @@ export class IsoCamera {
     reorthonormalize(this.kappa, this.Wb);
   }
 
+  /**
+   * Keep the camera inside the fundamental domain: if its world position left through face f,
+   * apply the pairing: Wb ← Wb · g_f⁻¹ (so the new position is g_f(old)). Returns the face crossed.
+   */
+  recentre(domain: { kappa: Kappa; faces: { w: V4; g: M4; partner: number }[] } | null): number {
+    if (!domain) return -1;
+    for (let guard = 0; guard < 4; guard++) {
+      const pos = this.worldPos();
+      let worst = -1, wv = 1e-9;
+      for (let f = 0; f < domain.faces.length; f++) {
+        const w = domain.faces[f].w;
+        const val = w[0] * pos[0] + w[1] * pos[1] + w[2] * pos[2] + w[3] * pos[3];
+        if (val > wv) { wv = val; worst = f; }
+      }
+      if (worst < 0) return guard === 0 ? -1 : worst;
+      const gInv = inverse(this.kappa, domain.faces[worst].g);
+      this.Wb = mul(this.Wb, gInv);
+      reorthonormalize(this.kappa, this.Wb);
+      if (guard === 3) return worst;
+    }
+    return -1;
+  }
+
   /** world → camera isometry including pitch */
   W(): M4 { return mul(rotation(rotX(-this.pitch)), this.Wb); } // +pitch looks up
   /** camera → world */

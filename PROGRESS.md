@@ -106,7 +106,43 @@ SV pre-pass: ~0.3 ms. The S³ variant pays for atan + periodic bookkeeping per n
 30 fps at 1080p holds for typical views; the worst S³ view needs ~60 % render scale on this
 integrated GPU (auto-scaling lands in Phase 8). Flat shader for reference: 47 ms / 23 ms.
 
-## Next — Phase 4: topology (3-torus → {4,3,5} → S³ → closed manifolds).
+## Phase 4 — Topology — DONE (census manifolds via SnapPy deferred, cut-order item 1)
+- `web/src/topology/domain.ts`: fundamental polyhedra as face covectors + pairing isometries;
+  box domains (3-torus, half-turn space, non-orientable Klein space, {4,3,4}), cube honeycombs
+  {4,3,5} (h = asinh√cos72° = 0.5306) and {4,3,3} tesseract (h = π/4) sized from the dihedral
+  angle; `dodecahedron.ts`: Poincaré dodecahedral space (S³, 120°, 36° twist, h = π/10) and
+  Seifert–Weber space (H³, 72°, 108° twist, h = 0.996). Vertices by triple plane intersection.
+- Walker (`walk_curved.frag`): domain-face exit test per step, segment clipped at the face,
+  ray state transported by g_f, re-projected, nudged inward; point location = per-face 32×32
+  chart (exp-map coords at the face centre) → cell-id guess → steepest ascent on ⟨x,a⟩'.
+  Hop cap 16, fog distance as the step cutoff (40 m default; S³ also stops at 2π).
+- `locate.ts` builds the charts on the CPU with warm starts (3–6 ms per domain per κ).
+- Camera: `IsoCamera.recentre()` applies Wb ← Wb·g_f⁻¹ when the eye leaves through f.
+- UI: "space" picker; curved spaces lock k so the scene's horizontal extent fills the inradius.
+- `tools/synth_scene.py --open` (floor + landmarks, no walls) so copies are visible;
+  `export_scene.py --steiner-box` samples Steiner candidates uniformly in the padded bbox
+  (the repo's Normal rule leaves the "sky" to a few huge cells: max degree 484 → 243, and
+  tiled frames 3–7× faster).
+
+### Tests (vitest, all green: 54 total)
+| test | result |
+|---|---|
+| dihedral angles measured numerically at edges: {4,3,4}/{4,3,5}/{4,3,3} | 90.000 / 72.000 / 120.000° |
+| dodecahedra: 20 vertices each on 3 faces, dihedral 120° (PDS) / 72° (SW) | pass |
+| every g_f maps 50 sampled face points onto the partner plane; g_partner∘g_f = I | pass, 1e-9 |
+| edge cycles compose to the identity: 3 per edge (PDS), 5 per edge (SW); wrong twists fail | pass |
+| transported rays stay inside the domain over 20 hops (all 8 spaces) | pass |
+| grid-located start == brute force on random face points (6 spaces × 900 pts) | 0 mismatches, ≤ 3 ascent steps |
+
+### Performance (M1 Pro, 1280×720, open scene 9.7k cells, fog 30 m, hop cap 16, ms/frame)
+| space | ms | | space | ms |
+|---|---|---|---|---|
+| none | 11.7 | | {4,3,5} | 42–45 |
+| 3-torus | 44 | | tesseract {4,3,3} | 62 |
+| Poincaré dodecahedral | 65 | | Seifert–Weber | 61 |
+At 960×540: 29–40 ms. Sky rays dominate (they run to the fog); a closed scene is much cheaper.
+
+## Next — Phase 5: navigation & feedback (collision, compass, map inset, laser).
 
 ## Known issues
 - Curved walker ~1.3× slower than the flat shader on the E³ path (generic 4D math); S³ ~2×.
