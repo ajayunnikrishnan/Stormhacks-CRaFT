@@ -49,7 +49,9 @@ def prepare_scene(scene_dir: Path, steiner: bool = True, seed: int = 0, steiner_
     ck = load_checkpoint(scene_dir)
     s = activate(ck)
     n_scene = s.n
-    info = {"n_scene_cells": int(n_scene), "k": int(s.k), "d": int(s.d)}
+    # scene-only bounding box, BEFORE Steiner points are appended and before the Morton sort
+    # permutes cells (the first n_scene entries are not the scene cells afterwards)
+    info = {"n_scene_cells": int(n_scene), "k": int(s.k), "d": int(s.d), "scene_bbox": [s.pos.min(0).tolist(), s.pos.max(0).tolist()]}
     if steiner:
         box = None
         if steiner_box_pad is not None:
@@ -137,11 +139,11 @@ def _exact_power_owner(s: FoamScene, x: np.ndarray, chunk: int = 2048) -> np.nda
     return out
 
 
-def curved_union(s: FoamScene, n_scene: int, k_max: float | None, n_per_sign: int, verify_samples: int = 0, k_neg: float | None = None, centre_y: float | None = None) -> dict:
+def curved_union(s: FoamScene, scene_bbox: list, k_max: float | None, n_per_sign: int, verify_samples: int = 0, k_neg: float | None = None, centre_y: float | None = None) -> dict:
     """§3.5: union adjacency over a sweep of curvatures k ∈ [−k_neg, k_max] (1/m²).
     Default k_max keeps the whole scene inside an S³ hemisphere with margin:
     s_max · max|x − centre| = 1.2  (< π/2). H³ has no such limit; default k_neg = 4·k_max."""
-    centre = 0.5 * (s.pos[:n_scene].min(0) + s.pos[:n_scene].max(0))
+    centre = 0.5 * (np.array(scene_bbox[0]) + np.array(scene_bbox[1]))
     if centre_y is not None:
         centre[1] = centre_y  # eye plane: the player walks on the totally geodesic plane through the centre
     ext = float(np.linalg.norm(s.pos - centre, axis=-1).max())
@@ -183,7 +185,7 @@ def write_scene(s: FoamScene, out_dir: Path, info: dict, extra_meta: dict | None
         add("adjidx_u", union["index"], np.uint32, (union["index"].shape[0],))
     data = b"".join(blobs)
     (out_dir / "scene.bin").write_bytes(data)
-    lo, hi = s.pos[: info["n_scene_cells"]].min(0), s.pos[: info["n_scene_cells"]].max(0)
+    lo, hi = np.array(info["scene_bbox"][0]), np.array(info["scene_bbox"][1])
     manifest = {
         "format": "surveyor-foam-v1",
         "n": n,
@@ -238,7 +240,7 @@ def main():
         extra["cameras"] = json.loads(cams.read_text())
     union = None
     if args.curved:
-        union = curved_union(s, info["n_scene_cells"], args.kmax, args.sweep, verify_samples=4000 if args.verify else 0, k_neg=args.kneg, centre_y=args.centre_y)
+        union = curved_union(s, info["scene_bbox"], args.kmax, args.sweep, verify_samples=4000 if args.verify else 0, k_neg=args.kneg, centre_y=args.centre_y)
         ui = union["info"]
         print(f"curved sweep: k in [-{union['k_neg']:.4f}, {union['k_max']:.4f}]  union edges {ui['union_edges']}  inflation vs flat {ui['inflation_vs_flat']:.3f}  avg deg {ui['union_avg_degree']:.1f}  max deg {ui['union_max_degree']}")
         for st in ui["samples"]:

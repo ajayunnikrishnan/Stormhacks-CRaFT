@@ -10,7 +10,7 @@
  * compass therefore differs from the heading by the holonomy angle −κ·A (Gauss–Bonnet),
  * which is exactly what the tool is meant to show (tests/compass.test.ts).
  */
-import { type Kappa, type V4, type M4, apply, form, inverse, rotation, mul, geodesic, tangentToward, distance, ORIGIN, v4, translationByVector, reorthonormalize } from "../geometry/space";
+import { type Kappa, type V4, type M4, apply, form, inverse, rotation, mul, geodesic, tangentToward, distance, ORIGIN, v4, translationByVector, reorthonormalize, logAtOrigin, embedPoint } from "../geometry/space";
 import type { SceneArrays } from "../foam/sceneData";
 import { halfToFloat } from "../foam/sceneData";
 import type { CurvedSites } from "../foam/curved";
@@ -39,9 +39,11 @@ export class Player {
   compass = new Float64Array([0, 0, -1]);
   radiusM = 0.25; // collision radius, metres
   collisions = true;
-  /** require dense foam under the feet (eye plane is 1.6 m above the floor): no walking off the platform */
+  /** require dense foam under the feet: no walking off the platform */
   needFloor = true;
-  eyeHeightM = 1.6;
+  /** floor height (metres, scene frame) and the embedding centre, set by the app */
+  floorY = 0;
+  centre: ArrayLike<number> = [0, 0, 0];
   private info: CellInfo;
 
   constructor(readonly scene: SceneArrays, info?: CellInfo) {
@@ -99,13 +101,19 @@ export class Player {
         if (this.isSolid(sites, p)) return false;
       }
       if (this.needFloor) {
-        // Probe a band of depths under the destination. The floor is embedded in exp-map
-        // coordinates, so away from the origin its geodesic depth below the eye plane differs
-        // from the nominal eye height by O(κ·x²) (±10 % here); the band covers that.
+        // The floor was embedded as the exp-map chart plane y = floorY (metres), so look for it
+        // there: take the destination's chart coordinates and probe just below floorY. Exact in
+        // every geometry (a fixed geodesic depth below the eye plane is not: in H³ the floor's
+        // geodesic depth grows with distance from the centre).
+        const l = logAtOrigin(cam.kappa, dest);
+        const px = l[0] / scale + this.centre[0], pz = l[2] / scale + this.centre[2];
+        // Scan a short vertical band around floorY: the dipole planes are geodesic planes tangent
+        // to the chart plane only at their sites, so away from the centre the 9 cm slab is nudged
+        // up or down by O(κ·|x|·cell size); ±10 cm covers it in every geometry.
         let support = false;
-        for (let depth = this.eyeHeightM - 0.3; depth <= this.eyeHeightM + 0.2; depth += 0.03) {
-          const p = apply(invWb, bodyPoint(cam.kappa, [d[0], d[1] - depth * scale, d[2]]));
-          if (this.isSolid(sites, p)) { support = true; break; }
+        for (let dz = -0.1; dz <= 0.1 && !support; dz += 0.02) {
+          const q = embedPoint(cam.kappa, [(px - this.centre[0]) * scale, (this.floorY + dz - this.centre[1]) * scale, (pz - this.centre[2]) * scale]);
+          if (this.isSolid(sites, q)) support = true;
         }
         if (!support) return false;
       }

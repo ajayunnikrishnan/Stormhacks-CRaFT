@@ -48,6 +48,8 @@ async function main() {
   isoCam.attach(canvas);
   const cameras: RepoCamera[] = scene.manifest.cameras ?? [];
   const player = new Player(scene);
+  player.floorY = scene.manifest.bbox_min[1];
+  player.centre = renderer.centre;
   const overlay = new Overlay(overlayCanvas);
   const gameHud = new Hud(document.body);
   const lights = new Lights();
@@ -133,10 +135,18 @@ async function main() {
   };
   const clearLights = () => { for (const l of lights.list) audio.remove(l.id); lights.list.length = 0; };
   const gallery = new Gallery(document.body, buildCards(flatHalf), (id) => setTopology(id));
-  $("galleryBtn").addEventListener("click", () => { if (has("topology")) gallery.show(); });
+  const openGallery = () => { if (!has("topology")) return; gallery.show(); renderThumbnails().catch((e) => console.warn("thumbnails", e)); };
+  $("galleryBtn").addEventListener("click", openGallery);
   /** Thumbnails: render each space from a fixed pose with our own renderer, then restore the state. */
+  let thumbsDone = false;
   const renderThumbnails = async () => {
-    const saveK = k, saveDomain = domain?.id ?? "none", saveWb = isoCam.Wb.slice(), savePitch = isoCam.pitch;
+    if (thumbsDone) return;
+    thumbsDone = true;
+    // save the pose in physical coordinates so it survives the curvature/topology switches below
+    const saveK = k, saveDomain = (domain?.id ?? "none") as DomainId, savePitch = isoCam.pitch;
+    const p0 = curvatureParams(k);
+    const savePosM = isoCam.physicalPos(p0.kappa, p0.scale, renderer.centre), saveYaw = isoCam.yaw();
+    const saveLevelLesson = gameHud.lessonEl.style.display;
     const lo: LightingOptions = { ...lighting, enabled: true, flashlight: true, ambient: 0.3, fogSigmaPerM: 0.03 };
     for (const card of gallery.cards) {
       setTopology(card.id as DomainId);
@@ -152,7 +162,10 @@ async function main() {
       gallery.setThumb(card.id as DomainId, c.toDataURL("image/png"));
       await new Promise((r) => setTimeout(r, 0));
     }
-    setTopology(saveDomain as DomainId); setK(saveK); isoCam.Wb.set(saveWb); isoCam.pitch = savePitch; player.cell = -1;
+    setTopology(saveDomain); setK(saveK);
+    const p1 = curvatureParams(k);
+    isoCam.setPoseMetres(p1.kappa, p1.scale, renderer.centre, savePosM, saveYaw); isoCam.pitch = savePitch; player.cell = -1;
+    gameHud.lessonEl.style.display = saveLevelLesson;
   };
 
   const startLevel = (lv: Level) => {
@@ -203,7 +216,7 @@ async function main() {
   window.addEventListener("keydown", (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
     if (e.code === "Escape") { if (gallery.visible) { gallery.hide(); return; } paused = !paused; gameHud.showMenu(paused ? controlsHtml : null); return; }
-    if (e.code === "KeyG" && has("topology")) { gallery.toggle(); return; }
+    if (e.code === "KeyG" && has("topology")) { if (gallery.visible) gallery.hide(); else openGallery(); return; }
     if (paused || gallery.visible) return;
     const p = curvatureParams(k);
     if (e.code === "KeyL" && has("laser")) { laser = laser ? null : makeLaser(); if (laser) levelState.laserUsed = true; }
@@ -288,7 +301,6 @@ async function main() {
   startLevel(LEVELS.find((l) => l.id === (params.get("level") ?? "sandbox")) ?? LEVELS[LEVELS.length - 1]);
   status.remove();
   applyQuality();
-  setTimeout(() => { renderThumbnails().catch((e) => console.warn("thumbnails", e)); }, 1500);
 
   let last = performance.now();
   let fpsAcc = 0, fpsN = 0, fps = 0, hopsCrossed = 0, lastMeterLamp = -1;
