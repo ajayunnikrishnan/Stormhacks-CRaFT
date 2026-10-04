@@ -57,6 +57,7 @@ async function main() {
   // walkable region: an explicit walk_bbox (large outdoor captures) or the whole scene
   const walk = scene.manifest.walk_bbox ?? [scene.manifest.bbox_min, scene.manifest.bbox_max];
   player.floorY = walk[0][1];
+  if (scene.manifest.walk_bbox) player.walkBox = walk;
   player.centre = renderer.centre;
   const map = new MapInset(mapCanvas);
   const lights = new Lights();
@@ -86,6 +87,10 @@ async function main() {
     flyCam.setFromRepoCamera(c);
     const p = curvatureParams(k);
     isoCam.setFromRepoCamera(c, p.kappa, p.scale, renderer.centre);
+    // the walker's body hangs 1.6 m below the eye plane (model origin): a capture camera at knee
+    // height would put the feet underground and block every step, so lift it onto the eye plane
+    const posM = isoCam.physicalPos(p.kappa, p.scale, renderer.centre);
+    isoCam.setPoseMetres(p.kappa, p.scale, renderer.centre, [posM[0], renderer.centre[1], posM[2]], isoCam.yaw());
     player.cell = -1;
   };
   const describe = () => {
@@ -292,7 +297,9 @@ async function main() {
     walk: (dx: number, dy: number, dz: number) => { player.tryMove(isoCam, renderer.curved, [dx, dy, dz], curvatureParams(k).scale); player.recentre(isoCam, domain); },
     yaw: (a: number) => isoCam.yawBy(a),
     camPos: () => Array.from(isoCam.physicalPos(curvatureParams(k).kappa, curvatureParams(k).scale, renderer.centre)),
-    setPose: (xM: number, yM: number, zM: number, yawDeg: number) => { const p = curvatureParams(k); isoCam.setPoseMetres(p.kappa, p.scale, renderer.centre, [xM, yM, zM], (yawDeg * Math.PI) / 180); player.cell = -1; },
+    setPose: (xM: number, yM: number, zM: number, yawDeg: number, pitchDeg?: number) => { const p = curvatureParams(k); isoCam.setPoseMetres(p.kappa, p.scale, renderer.centre, [xM, yM, zM], (yawDeg * Math.PI) / 180); if (pitchDeg !== undefined) isoCam.pitch = (pitchDeg * Math.PI) / 180; player.cell = -1; },
+    pitch: () => (isoCam.pitch * 180) / Math.PI,
+    lastBlock: () => player.lastBlock,
     solidAt: (xM: number, yM: number, zM: number) => { const p = curvatureParams(k); return player.isSolid(renderer.curved, embedPoint(p.kappa, [(xM - renderer.centre[0]) * p.scale, (yM - renderer.centre[1]) * p.scale, (zM - renderer.centre[2]) * p.scale])); },
     pressKey: (code: string) => window.dispatchEvent(new KeyboardEvent("keydown", { code })),
     toggleMap: () => map.toggle(),
@@ -310,6 +317,7 @@ async function main() {
 
   // ---------------------------------------------------------------- start
   status.remove();
+  if (scene.manifest.render_distance) distEl.value = String(Math.min(Number(distEl.max), scene.manifest.render_distance));
   applyQuality(); syncQChips(); applyDistance();
   setTopology("none");
   if (cameras.length) applyCamera(cameras[0]);

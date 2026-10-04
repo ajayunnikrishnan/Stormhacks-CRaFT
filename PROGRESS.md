@@ -13,6 +13,9 @@
   budget: `--final_points 150000 --num_texel_sites 4 --sv_dof 4`, 30k iterations in ~12 min.
   Experiment `treehill_150k_k4_d4`; checkpoint 73 MB; 4 test views rendered with the repo's own
   Warp ray tracer (`tools/render_reference.py`, 1267×832) + all 123 training cameras dumped.
+- Power Foam's own `test.py` on the 18 held-out views (rasteriser, full res): PSNR 21.87 dB,
+  SSIM 0.523, LPIPS 0.578 (`output/treehill_150k_k4_d4/metrics.txt`; a 1.2 M-cell model would
+  score higher — this is the 150k web budget).
 - Canonicalised with `tools/canonicalize_scene.py` (123 cameras): scale 0.994 m/unit, orbit radius
   4.66 m, floor plane fitted from 17k floor cells, cropped to a 12 m radius → 123 019 cells.
 - Exported with `--curved --kmax 0.015 --walk-box -4 0 -4 4 3.2 4 --background 0.72 0.74 0.78` →

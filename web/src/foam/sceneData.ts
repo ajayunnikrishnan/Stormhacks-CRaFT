@@ -16,6 +16,7 @@ export interface SceneManifest {
   info: Record<string, unknown>;
   cameras?: RepoCamera[];
   background?: [number, number, number]; // escape / fog colour (default black)
+  render_distance?: number; // default walk cutoff (m) for this scene
   walk_bbox?: [number[], number[]]; // walkable region in metres (outdoor scenes); floor = walk_bbox[0][1]
   curved?: { centre: number[]; k_max: number; k_neg?: number; scene_extent: number; n_edges_directed_union: number; sweep: Record<string, unknown> };
 }

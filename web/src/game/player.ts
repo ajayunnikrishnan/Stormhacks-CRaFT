@@ -41,6 +41,9 @@ export class Player {
   collisions = true;
   /** require dense foam under the feet: no walking off the platform */
   needFloor = true;
+  /** walkable region (metres, scene frame): inside it ground is known to exist, so a missed floor
+   *  probe (gaps between the balls of a sparse real-capture ground) never blocks a step */
+  walkBox: [number[], number[]] | null = null;
   /** floor height (metres, scene frame) and the embedding centre, set by the app */
   floorY = 0;
   centre: ArrayLike<number> = [0, 0, 0];
@@ -65,15 +68,27 @@ export class Player {
    * Is model point x inside dense foam? Inside the cell's ball AND behind the (undisplaced)
    * dipole plane with σ above threshold. Steiner / empty cells never block.
    */
-  isSolid(sites: CurvedSites, x: V4, cellHint?: number): boolean {
+  /** why the last tryMove refused (debug hook) */
+  lastBlock = "";
+
+  /**
+   * @param shell  false (collision): the whole ball of a dense cell counts, so a thin plank is as
+   *               thick as its cells (a step cannot slip through between two probes);
+   *               true (floor probe): only the dense half behind the dipole plane
+   */
+  isSolid(sites: CurvedSites, x: V4, cellHint?: number, shell = false): boolean {
     const k = sites.params.kappa, kk = k === 0 ? 1 : k;
     const [off, idx] = this.adj();
     const c = descend(sites.A, kk, off, idx, cellHint ?? (this.cell < 0 ? 0 : this.cell), x).cell;
-    if (this.info.sigma[c] < 1e-3) return false;
     const R = sites.rad[2 * c], cR = sites.rad[2 * c + 1];
+    // collision: the cell must be opaque across its ball (optical depth σ·2R); big faint cells
+    // (fog, sky, floaters in real captures) are not walls. Floor probe: any dense cell.
+    const tau = this.info.sigma[c] * 2 * R;
+    if (shell ? this.info.sigma[c] < 1e-3 : tau < 1.0) return false;
     const a = sites.A.subarray(4 * c, 4 * c + 4);
     const P = k === 0 ? v4(1, a[1], a[2], a[3]) : v4((a[0] + 1) * cR, a[1] * cR, a[2] * cR, a[3] * cR);
     if (distance(k, x, P) > R) return false;
+    if (!shell) return true;
     // dense side: ⟨x, N⟩_κ' ≤ 0 with N the transported normal; equivalently in the cell frame n̄·log(x) ≤ 0
     const n = this.info.normal.subarray(3 * c, 3 * c + 3);
     // transported normal via the translation frame: N = T_P (0, n̄)
@@ -90,16 +105,36 @@ export class Player {
    */
   tryMove(cam: IsoCamera, sites: CurvedSites, dBody: number[], scale: number): boolean {
     if (!this.collisions) { cam.moveBy(dBody); return true; }
+    const invWb = inverse(cam.kappa, cam.Wb);
+    const r = this.radiusM * scale;
+    // body probes: a ring at eye height plus points at chest, waist and knee height (real captures
+    // have low obstacles such as benches; the knee probe stays above ground clutter)
+    // a column of probes every 7.5 cm from 25 cm above the floor to the eye, swept along the step.
+    // No lateral ring: cells are opaque across their whole ball for collisions, so the surface
+    // itself is the wall, and a ring at the collision radius snagged on floaters in real captures.
+    const ring: number[][] = [];
+    // from 40 cm up: real ground is littered with ankle-height clutter cells (gravel, leaves)
+    for (let h = 0.4; h <= 1.6; h += 0.075) ring.push([0, -(1.6 - h) * scale, 0]);
+    void r;
+    // swept: a step can be longer than a shell is thick, so sample each probe along the step
+    const ringBlocked = (d: number[]) => {
+      const len = Math.hypot(d[0], d[1], d[2]);
+      const nSub = Math.max(1, Math.ceil(len / (0.03 * scale)));
+      for (const o of ring) for (let i = 1; i <= nSub; i++) {
+        const t = i / nSub;
+        const p = apply(invWb, bodyPoint(cam.kappa, [d[0] * t + o[0], d[1] * t + o[1], d[2] * t + o[2]]));
+        if (this.isSolid(sites, p)) { this.lastBlock = `body probe h=${(1.6 + o[1] / scale).toFixed(2)} t=${t.toFixed(2)} cell=${this.cell}`; return true; }
+      }
+      return false;
+    };
+    // already overlapping a thin shell (a step can cross it between probes)? then only the
+    // destination itself must be free, so the walker can always back out instead of freezing
+    const penetrating = ring.some((o) => this.isSolid(sites, apply(invWb, bodyPoint(cam.kappa, o))));
     const attempt = (d: number[]) => {
       if (!d[0] && !d[1] && !d[2]) return false;
-      const invWb = inverse(cam.kappa, cam.Wb);
       const dest = apply(invWb, bodyPoint(cam.kappa, d));
-      if (this.isSolid(sites, dest)) return false;
-      const r = this.radiusM * scale;
-      for (const o of [[r, 0, 0], [-r, 0, 0], [0, 0, r], [0, 0, -r], [0, -0.6 * r, 0]]) {
-        const p = apply(invWb, bodyPoint(cam.kappa, [d[0] + o[0], d[1] + o[1], d[2] + o[2]]));
-        if (this.isSolid(sites, p)) return false;
-      }
+      if (this.isSolid(sites, dest)) { this.lastBlock = "destination solid"; return false; }
+      if (!penetrating && ringBlocked(d)) return false;
       if (this.needFloor) {
         // The floor was embedded as the exp-map chart plane y = floorY (metres), so look for it
         // there: take the destination's chart coordinates and probe just below floorY. Exact in
@@ -110,16 +145,25 @@ export class Player {
         // Scan a short vertical band around floorY: the dipole planes are geodesic planes tangent
         // to the chart plane only at their sites, so away from the centre the 9 cm slab is nudged
         // up or down by O(κ·|x|·cell size); ±10 cm covers it in every geometry.
+        // Real captures: the ground is a layer of 5–10 cm cells whose balls leave gaps and whose
+        // planes tilt, so probe a small cluster of columns over a wider band (±25 cm).
         let support = false;
-        for (let dz = -0.1; dz <= 0.1 && !support; dz += 0.02) {
-          const q = embedPoint(cam.kappa, [(px - this.centre[0]) * scale, (this.floorY + dz - this.centre[1]) * scale, (pz - this.centre[2]) * scale]);
-          if (this.isSolid(sites, q)) support = true;
+        const dxs = [0, 0.12, -0.12], dzs = [0, 0.12, -0.12];
+        for (let ix = 0; ix < 3 && !support; ix++) for (let iz = 0; iz < 3 && !support; iz++) {
+          if (ix && iz) continue; // 5 columns: centre + 4 neighbours
+          for (let dz = -0.25; dz <= 0.25 && !support; dz += 0.03) {
+            const q = embedPoint(cam.kappa, [(px + dxs[ix] - this.centre[0]) * scale, (this.floorY + dz - this.centre[1]) * scale, (pz + dzs[iz] - this.centre[2]) * scale]);
+            if (this.isSolid(sites, q, undefined, true)) support = true;
+          }
         }
-        if (!support) return false;
+        const wb = this.walkBox;
+        const inWalk = !!wb && px >= wb[0][0] && px <= wb[1][0] && pz >= wb[0][2] && pz <= wb[1][2];
+        if (!support && !inWalk) { this.lastBlock = "no floor"; return false; }
       }
       cam.moveBy(d);
       return true;
     };
+    this.lastBlock = "";
     if (attempt(dBody)) return true;
     const a = attempt([dBody[0], dBody[1], 0]);
     const b = attempt([0, dBody[1], dBody[2]]);

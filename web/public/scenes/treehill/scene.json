@@ -453,5 +453,6 @@
    "height": 832,
    "start_point_idx": 38395
   }
- ]
+ ],
+ "render_distance": 30.0
 }
