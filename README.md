@@ -12,11 +12,6 @@ space), and a quiz asks you to identify the universe you were dropped into by wa
 Two scenes ship: a synthetic test room and **Treehill** from the Mip-NeRF 360 dataset, trained with
 Power Foam (300k cells) and validated against Power Foam's own CUDA ray tracer at 38–44 dB PSNR.
 
-- Maths and validation in full: [docs/WRITEUP.md](docs/WRITEUP.md)
-- Power Foam study and renderer architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- Training a scene on a rented GPU: [docs/TRAINING_VASTAI.md](docs/TRAINING_VASTAI.md)
-- Demo script: [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) · progress log: [PROGRESS.md](PROGRESS.md)
-
 ## The idea in one paragraph
 
 Power Foam represents a scene as a **power diagram**: a cell per site (pᵢ, rᵢ), and a ray is rendered
