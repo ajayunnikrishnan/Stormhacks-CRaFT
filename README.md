@@ -1,4 +1,6 @@
-# Surveyor — measuring the shape of space with light
+# CRaFT: Curved Radiance Foam Tracing
+
+*Exact geodesic ray tracing of captured scenes in constant-curvature spaces — and **Surveyor**, a game where you measure the shape of space with light.*
 
 Hackathon entry for Huawei Custom Challenge #1, *Beyond Euclid*. A captured [Power Foam](https://github.com/theialab/powerfoam)
 scene is ray traced in WebGL2 along exact geodesics of hyperbolic, flat and spherical space, with a

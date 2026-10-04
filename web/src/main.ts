@@ -191,12 +191,12 @@ async function main() {
   isoCam.moveHook = (d) => { player.tryMove(isoCam, renderer.curved, d, curvatureParams(k).scale); };
   isoCam.yawHook = (R) => player.onYaw(R);
 
-  const controlsHtml = `<h3 style="margin:0 0 8px">Surveyor — paused</h3>
+  const controlsHtml = `<h3 style="margin:0 0 8px">CRaFT · Surveyor — paused</h3>
     <b>Move</b> WASD (shift = run) · <b>Look</b> drag · <b>Esc</b> resume<br>
     <b>B</b> beacon (3 → triangle) · <b>I</b> light meter · <b>L</b> laser · <b>M</b> map · <b>C</b> compass<br>
     <b>P</b> lamp · <b>T</b> flare · <b>F</b> flashlight · <b>X</b> clear lights · <b>R</b> restart level · <b>N</b> next level<br>
     <b>Enter</b> submit curvature (exam)<br><br>
-    <span style="color:#aaa">The space is rendered by ray tracing a captured Power Foam scene along exact geodesics of H³, E³ or S³; see docs/WRITEUP.md.</span>`;
+    <span style="color:#aaa">CRaFT (Curved Radiance Foam Tracing): a captured Power Foam scene ray traced along exact geodesics of H³, E³ or S³; see docs/WRITEUP.md.</span>`;
 
   const makeLaser = () => { const p = curvatureParams(k); const o = isoCam.worldPos(); return { o, v: tangentialize(p.kappa, o, apply(isoCam.invW(), v4(0, 0, 0, -1))), length: 30 * p.scale }; };
 
@@ -371,7 +371,7 @@ async function main() {
     const s = renderer.stats;
     const posM = isoCam.physicalPos(p.kappa, p.scale, renderer.centre);
     hud.textContent =
-      `Surveyor · ${s.mode}${domain ? ` · ${domain.name}` : ""}\n` +
+      `CRaFT · Surveyor · ${s.mode}${domain ? ` · ${domain.name}` : ""}\n` +
       `${fps.toFixed(0)} fps · render ${s.width}x${s.height} · canvas ${W}x${H}\n` +
       `gpu sv ${s.svMs.toFixed(2)} ms · walk ${s.walkMs.toFixed(2)} ms · cpu ${cpuMs.toFixed(2)} ms\n` +
       `cells ${scene.n} · k ${scene.k} · D ${scene.d} · start ${s.startCell}\n` +

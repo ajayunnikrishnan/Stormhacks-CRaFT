@@ -1,8 +1,9 @@
-# Surveyor — measuring the shape of space with light
+# CRaFT: Curved Radiance Foam Tracing
 
-*Huawei Custom Challenge #1, "Beyond Euclid". Mathematical and technical write-up.*
+*Exact geodesic ray tracing of captured scenes in constant-curvature spaces.*
+*Huawei Custom Challenge #1, "Beyond Euclid". Mathematical and technical write-up of CRaFT (the method) and Surveyor (the game built on it).*
 
-Surveyor drops the player into a universe of unknown shape. Everything they see is a real
+CRaFT renders a captured Power Foam scene by ray tracing it along exact geodesics of H³, E³ or S³. Surveyor, the game built on it, drops the player into a universe of unknown shape. Everything they see is a real
 captured 3D scene (a **Power Foam** reconstruction: an explicit volumetric partition of space
 into bounded power cells with oriented, textured dipole surfaces) **ray traced along exact,
 closed-form geodesics** of hyperbolic, flat or spherical space. The player works out the

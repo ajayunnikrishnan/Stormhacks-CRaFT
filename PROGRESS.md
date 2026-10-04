@@ -1,4 +1,4 @@
-# PROGRESS
+# PROGRESS — CRaFT: Curved Radiance Foam Tracing (+ Surveyor)
 
 ## Phase 0 — Recon — DONE (commit a111efd)
 `docs/ARCHITECTURE.md`; Power Foam pinned as submodule `powerfoam/` @ 9639225.

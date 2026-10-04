@@ -1,10 +1,10 @@
-# Demo script (2–3 minutes)
+# CRaFT / Surveyor — demo script (2–3 minutes)
 
 Open `web/` in Chrome (`npx vite`, then http://127.0.0.1:5173/?level=tutorial). Quality "auto".
 Have the pause menu (Esc) ready for the controls.
 
 **0:00 — "A normal room."** Start in level 1, flat. Walk a few steps (WASD), look around.
-"This is a real captured scene — a Power Foam reconstruction — ray traced on the GPU."
+"This is CRaFT: a real captured scene — a Power Foam reconstruction — ray traced along exact geodesics on the GPU."
 Press **B** three times while walking a short triangle. Point at the readout: *angles sum to
 180.00°*. Press **P** for a lamp, **I** for the light meter, walk away: the dots sit on the grey
 1/d² curve. "Flat. Nothing to see. Now watch."

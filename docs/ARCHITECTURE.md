@@ -1,4 +1,4 @@
-# ARCHITECTURE.md — Phase 0 recon of Power Foam
+# ARCHITECTURE.md — CRaFT (Curved Radiance Foam Tracing): Phase 0 recon of Power Foam
 
 Status: Phase 0 (read-only). Everything below was read from the paper
 (`paper.pdf`, §3 + App. B–C) and the repo at `powerfoam/` (pinned as a git
