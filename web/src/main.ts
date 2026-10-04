@@ -99,6 +99,7 @@ async function main() {
     curvV.textContent = p.kappa === 0 ? "k = 0 · ordinary Euclidean space" : `k = ${k.toExponential(2)} per m² · R = ${(1 / p.scale).toFixed(1)} m`;
     spaceEl.textContent = domain ? TOPO_LABELS[domain.id as DomainId] : "open space";
     document.querySelectorAll<HTMLElement>(".chip").forEach((c) => c.classList.toggle("on", Math.sign(Number(c.dataset.k)) === p.kappa));
+    $("miniState").textContent = `${curvWord.textContent} · ${spaceEl.textContent}`;
   };
   const setK = (nk: number, moveSlider = true) => {
     const before = curvatureParams(k), after = curvatureParams(nk);
@@ -129,6 +130,10 @@ async function main() {
   curvEl.addEventListener("input", () => setK(sliderToK(Number(curvEl.value)), false));
   document.querySelectorAll<HTMLElement>(".chip").forEach((c) => c.addEventListener("click", () => { if (domain) setTopology("none"); setK(sliderToK(Number(c.dataset.k))); }));
   $("openBtn").addEventListener("click", () => { if (domain) setTopology("none"); else setK(0); });
+  // collapsible controls card (header click or C); remembered per browser
+  const setCollapsed = (on: boolean) => { controlsEl.classList.toggle("collapsed", on); try { localStorage.setItem("craft.controls", on ? "1" : "0"); } catch { /* private mode */ } };
+  controlsEl.querySelector("h3")!.addEventListener("click", () => setCollapsed(!controlsEl.classList.contains("collapsed")));
+  try { if (localStorage.getItem("craft.controls") === "1") setCollapsed(true); } catch { /* ignore */ }
   scaleEl.addEventListener("input", () => (scaleV.textContent = Number(scaleEl.value).toFixed(2)));
   fovEl.addEventListener("input", () => { isoCam.fovDeg = Number(fovEl.value); flyCam.fovDeg = isoCam.fovDeg; fovV.textContent = `${fovEl.value}°`; });
   sensEl.addEventListener("input", () => { isoCam.sensitivity = Number(sensEl.value); });
@@ -272,6 +277,7 @@ async function main() {
     if (titleEl.style.display !== "none") return;
     if (e.code === "KeyG") { if (quiz) quizPicker.toggle(); else if (gallery.visible) gallery.hide(); else openGallery(); }
     if (e.code === "KeyM") map.toggle();
+    if (e.code === "KeyC") setCollapsed(!controlsEl.classList.contains("collapsed"));
     if (e.code === "Backquote") toggleDev();
   });
 
