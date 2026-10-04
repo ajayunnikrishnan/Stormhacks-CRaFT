@@ -23,3 +23,8 @@ scenes/*/refs_train/
 scenes/*_raw/
 web/public/scenes/treehill_full/
 scenes/treehill_full/
+scenes/*2_raw/
+
+# treehill: the raw 102 MB scene.bin exceeds GitHub's file limit; the loader falls back to scene.bin.gz
+web/public/scenes/treehill/scene.bin
+!web/public/scenes/treehill/scene.bin.gz

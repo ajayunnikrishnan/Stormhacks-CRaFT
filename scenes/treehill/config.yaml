@@ -7,7 +7,7 @@ contribution_weight: 0.1
 data_path: data/mipnerf360
 dataset: colmap
 densify_from: 1000
-densify_until: 24000
+densify_until: 80000
 density_lr_final: 1.0
 density_lr_init: 1.0
 disable_coop_adj_load: false
@@ -20,13 +20,13 @@ downsample_iterations:
 - 500
 dry_run: false
 eval: true
-experiment_name: treehill_150k_k4_d4
-final_points: 150000
+experiment_name: treehill_300k_k4_d4_100k
+final_points: 300000
 init_points: 100000
 init_type: sfm
 interpenetration_weight: 0.0001
 is_pinhole: true
-iterations: 30000
+iterations: 100000
 normal_supervision: false
 normal_weight: 0.1
 num_texel_sites: 4
@@ -50,24 +50,24 @@ texel_sv_rgb_lr_init: 0.002
 use_metric3d: false
 viewer: false
 craft_canonical:
-  scale: 0.9940818935438847
+  scale: 0.9056232496310684
   centre:
-  - 0.007690964914744964
-  - -1.5521697134767778
-  - 0.017044793241232106
+  - 0.006051162646964534
+  - -1.6993674553267155
+  - 0.018151234693549272
   up_scene:
-  - -0.04525443159040673
-  - -0.9277806419959829
-  - -0.3703715928077516
-  yaw_deg: 84.46932685167528
-  floor_scene_units: -1.5521697134767778
-  camera_height_scene_units: 1.5089300084246844
+  - -0.035283702594896986
+  - -0.9286172516455469
+  - -0.36935763194696003
+  yaw_deg: 87.44898600961272
+  floor_scene_units: -1.6993674553267155
+  camera_height_scene_units: 1.6563179010820095
   camera_height_m: 1.5
-  orbit_radius_m: 4.659553500704145
+  orbit_radius_m: 4.251039766382376
   n_cameras: 123
-  n_floor_cells: 17375
-  n_cells_before_crop: 150000
-  n_cells_after_crop: 123019
+  n_floor_cells: 17338
+  n_cells_before_crop: 299999
+  n_cells_after_crop: 251498
   crop:
     radius: 12.0
     below: 1.5

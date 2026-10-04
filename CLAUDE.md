@@ -55,6 +55,8 @@ Re-export BOTH `synth_open` (default scene) and `synth_room` after exporter chan
 - Performance knobs live in the main controls card: render distance (walk cutoff + unlit fog window,
   default 14 m) and detail chips (resolution presets; `auto` targets 30 fps). The canvas is 1× by
   default; HiDPI is a developer-panel option. The ray walk cost is roughly linear in render distance.
+- Scene binaries over ~95 MB cannot go to GitHub: commit `scene.bin.gz` (gzip -6) and ignore the
+  raw file; `loadScene` falls back to the .gz and decompresses with DecompressionStream.
 - Positions stored in the manifest/charts are metres in the scene frame; model coordinates are
   metres × s with the centre at the eye plane (`--centre-y 1.6`). Convert with `embedPoint` /
   `logAtOrigin`, never by scaling model vectors directly.

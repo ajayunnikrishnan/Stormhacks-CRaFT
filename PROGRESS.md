@@ -16,14 +16,21 @@
 - Power Foam's own `test.py` on the 18 held-out views (rasteriser, full res): PSNR 21.87 dB,
   SSIM 0.523, LPIPS 0.578 (`output/treehill_150k_k4_d4/metrics.txt`; a 1.2 M-cell model would
   score higher — this is the 150k web budget).
+- Second run (the one shipped as "Treehill"): `--final_points 300000 --iterations 100000
+  --densify_until 80000`, 32 min on the 4090, experiment `treehill_300k_k4_d4_100k`, checkpoint
+  146 MB. `test.py`: PSNR 21.53 dB, SSIM 0.532, LPIPS 0.538 (sharper canopy and bench than the
+  150k model; the first model is kept at `scenes/treehill_150k`).
 - Canonicalised with `tools/canonicalize_scene.py` (123 cameras): scale 0.994 m/unit, orbit radius
   4.66 m, floor plane fitted from 17k floor cells, cropped to a 12 m radius → 123 019 cells.
-- Exported with `--curved --kmax 0.015 --walk-box -4 0 -4 4 3.2 4 --background 0.72 0.74 0.78` →
-  `web/public/scenes/treehill` (126 927 cells incl. Steiner, 49 MB), selectable as "Treehill" on the
+- Exported with `--curved --kmax 0.015 --walk-box -4 0 -4 4 3.2 4 --background 0.72 0.74 0.78
+  --render-distance 30` → `web/public/scenes/treehill`: 300k model → 263 286 cells incl. Steiner,
+  scene.bin 102 MB (committed gzipped, 61 MB; the loader decompresses in the browser). The 150k
+  model exported to 126 927 cells / 49 MB, selectable as "Treehill" on the
   title screen (`?scene=treehill`). 40 fps at 502×450 on the dev Mac.
 - **PSNR vs Power Foam's own CUDA ray tracer (the Phase 1 acceptance, finally on a real scene):**
   uncropped export (`web/public/scenes/treehill_full`, not tracked) vs `refs/cam_00{0..3}` at
-  1267×832: **43.85 / 41.31 / 44.39 / 43.36 dB**, mean radiance equal to 4 decimals, 3% of pixels
+  1267×832: 150k model **43.85 / 41.31 / 44.39 / 43.36 dB**; 300k model **38.44 / 39.49 / 39.87 /
+  39.79 dB** (7.6% of pixels off by > 0.02 vs 3%: more small cells, more seam tie-breaks), mean radiance equal to 4 decimals, 3% of pixels
   off by > 0.02 (seam tie-breaks + fp16 attributes). The cropped export scores 11–14 dB against the
   same references only because the far sky/hills are removed (rays escape to the background).
 
