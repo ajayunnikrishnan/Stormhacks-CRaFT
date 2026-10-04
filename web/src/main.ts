@@ -5,6 +5,9 @@ import { FlyCamera, repoCameraState } from "./game/camera";
 import { IsoCamera } from "./game/isocamera";
 import { curvatureParams } from "./foam/curved";
 import { DOMAIN_IDS, makeDomain, type Domain, type DomainId } from "./topology/domain";
+import { Player } from "./game/player";
+import { Overlay } from "./ui/overlay";
+import { apply, inverse, v4, geodesic, type V4 } from "./geometry/space";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const canvas = $<HTMLCanvasElement>("gl");
@@ -14,6 +17,8 @@ const curvEl = $<HTMLInputElement>("curv"), curvV = $("curvV");
 const camsEl = $<HTMLSelectElement>("cams");
 const topoEl = $<HTMLSelectElement>("topo");
 const modeEl = $<HTMLInputElement>("mode"), nearCullEl = $<HTMLInputElement>("nearcull"), repoPixEl = $<HTMLInputElement>("repopix"), floorEl = $<HTMLInputElement>("floor");
+const collideEl = $<HTMLInputElement>("collide");
+const overlayCanvas = $<HTMLCanvasElement>("overlay");
 
 const params = new URLSearchParams(location.search);
 const sceneUrl = params.get("scene") ?? "scenes/synth_open/scene.json";
@@ -33,6 +38,22 @@ async function main() {
   flyCam.attach(canvas);
   isoCam.attach(canvas);
   const cameras: RepoCamera[] = scene.manifest.cameras ?? [];
+  const player = new Player(scene);
+  const overlay = new Overlay(overlayCanvas);
+  let laser: { o: V4; v: V4; length: number } | null = null;
+  const beacons: V4[] = [];
+  isoCam.moveHook = (d) => { player.tryMove(isoCam, renderer.curved, d, curvatureParams(k).scale); };
+  isoCam.yawHook = (R) => player.onYaw(R);
+  window.addEventListener("keydown", (e) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
+    if (e.code === "KeyL") { // laser: current view ray, 30 m
+      const o = isoCam.worldPos();
+      const v = apply(isoCam.invW(), v4(0, 0, 0, -1));
+      laser = laser ? null : { o, v, length: 30 * curvatureParams(k).scale };
+    }
+    if (e.code === "KeyM") overlay.showMap = !overlay.showMap;
+    if (e.code === "KeyB") { if (beacons.length >= 3) beacons.length = 0; beacons.push(isoCam.worldPos()); }
+  });
   const kPos = scene.manifest.curved?.k_max ?? 0.05;
   const kNeg = scene.manifest.curved?.k_neg ?? kPos;
   const sliderToK = (u: number) => (u < 0 ? -u * u * kNeg : u * u * kPos);
@@ -107,7 +128,11 @@ async function main() {
     renderLive: (w: number, h: number, o?: Partial<RenderOptions>) => Array.from(renderer.renderCurvedToArray(isoState(w / h), { ...opts(), ...o }, w, h)),
     setK, setTopology,
     setFog: (m: number, hops?: number) => { renderer.fogDistanceM = m; if (hops) renderer.maxHops = hops; },
-    moveCamera: (dx: number, dy: number, dz: number) => { isoCam.moveBy([dx, dy, dz]); isoCam.recentre(domain); },
+    moveCamera: (dx: number, dy: number, dz: number) => { isoCam.moveBy([dx, dy, dz]); player.recentre(isoCam, domain); },
+    walk: (dx: number, dy: number, dz: number) => { player.tryMove(isoCam, renderer.curved, [dx, dy, dz], curvatureParams(k).scale); player.recentre(isoCam, domain); },
+    compassAngle: () => player.compassAngle(),
+    setLaser: (on: boolean) => { laser = on ? { o: isoCam.worldPos(), v: apply(isoCam.invW(), v4(0, 0, 0, -1)), length: 30 * curvatureParams(k).scale } : null; },
+    overlayPng: (w: number, h: number) => { const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d")!.drawImage(overlayCanvas, 0, 0, w, h); return c.toDataURL("image/png").split(",")[1]; },
     yaw: (a: number) => isoCam.yawBy(a),
     camPos: () => Array.from(isoCam.physicalPos(curvatureParams(k).kappa, curvatureParams(k).scale, renderer.centre)),
     debug: () => ({ worldPos: Array.from(isoCam.worldPos()), faces: domain ? domain.faces.map((f) => { const p = isoCam.worldPos(); return +(f.w[0] * p[0] + f.w[1] * p[1] + f.w[2] * p[2] + f.w[3] * p[3]).toFixed(3); }) : null, centre: Array.from(renderer.centre), flatHalf }),
@@ -137,10 +162,21 @@ async function main() {
     const p = curvatureParams(k);
     const t0 = performance.now();
     if (modeEl.checked) {
+      player.collisions = collideEl.checked;
       isoCam.update(dt, p.scale, !floorEl.checked);
-      if (isoCam.recentre(domain) >= 0) hopsCrossed++;
+      if (player.recentre(isoCam, domain) >= 0) hopsCrossed++;
+      player.locate(renderer.curved, isoCam.worldPos());
       renderer.frameCurved(isoState(W / H), opts(), W, H, Number(scaleEl.value));
+      overlay.resize(W, H);
+      const invWb = inverse(p.kappa, isoCam.Wb);
+      const sh = scene.manifest.bbox_max.map((v, i) => ((v - scene.manifest.bbox_min[i]) / 2) * p.scale) as [number, number, number];
+      overlay.draw({
+        kappa: p.kappa, scale: p.scale, W: isoCam.W(), invW: isoCam.invW(), camWorld: isoCam.worldPos(),
+        headingWorld: apply(invWb, v4(0, 0, 0, -1)), compassAngle: player.compassAngle(), domain,
+        sceneHalfModel: sh, tanHalfFov: isoCam.tanHalfFov(W / H), laser, beacons,
+      });
     } else {
+      overlay.resize(W, H); overlay.draw({ kappa: 0, scale: 1, W: isoCam.W(), invW: isoCam.invW(), camWorld: isoCam.worldPos(), headingWorld: v4(0, 0, 0, -1), compassAngle: 0, domain: null, sceneHalfModel: [1, 1, 1], tanHalfFov: [1, 1], laser: null, beacons: [] });
       flyCam.update(dt);
       renderer.frame(flyCam.state(W / H), opts(), W, H, Number(scaleEl.value));
     }
@@ -155,7 +191,8 @@ async function main() {
       `gpu sv ${s.svMs.toFixed(2)} ms · walk ${s.walkMs.toFixed(2)} ms · cpu ${cpuMs.toFixed(2)} ms\n` +
       `cells ${scene.n} · k ${scene.k} · D ${scene.d} · start ${s.startCell}\n` +
       `k = ${k.toExponential(2)} 1/m² · κ=${p.kappa} · s=${p.scale.toFixed(3)}\n` +
-      `pos (m) ${Array.from(posM).map((v) => v.toFixed(2)).join(", ")}${domain ? ` · wall crossings ${hopsCrossed}` : ""}`;
+      `pos (m) ${Array.from(posM).map((v) => v.toFixed(2)).join(", ")} · cell ${player.cell}${domain ? ` · wall crossings ${hopsCrossed}` : ""}\n` +
+      `L laser · M map · B beacon (${beacons.length}/3)`;
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);

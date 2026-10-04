@@ -17,6 +17,7 @@
   </head>
   <body>
     <canvas id="gl"></canvas>
+    <canvas id="overlay" style="position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none"></canvas>
     <div id="status">loading…</div>
     <div id="hud"></div>
     <div id="panel">
@@ -28,6 +29,7 @@
       <label><input id="nearcull" type="checkbox" /> near-camera cull (repo parity)</label>
       <label><input id="repopix" type="checkbox" /> repo pixel grid (edges at ±1)</label>
       <label><input id="floor" type="checkbox" checked /> stay on the eye plane (no Q/E)</label>
+      <label><input id="collide" type="checkbox" checked /> collisions</label>
       <div>WASD move · drag to look · shift = fast</div>
     </div>
     <script type="module" src="/src/main.ts"></script>

@@ -142,7 +142,31 @@ integrated GPU (auto-scaling lands in Phase 8). Flat shader for reference: 47 ms
 | Poincaré dodecahedral | 65 | | Seifert–Weber | 61 |
 At 960×540: 29–40 ms. Sky rays dominate (they run to the fog); a closed scene is much cheaper.
 
-## Next — Phase 5: navigation & feedback (collision, compass, map inset, laser).
+## Phase 5 — Navigation & feedback — DONE
+- `web/src/game/player.ts`: cell tracking by steepest ascent (no per-frame brute force);
+  collision = geodesic probe of the destination + a ring at the player radius against dense
+  foam (inside the cell's ball ∧ behind its dipole plane ∧ σ > 1e-3), sliding along x/z;
+  compass = tangent vector in body coordinates: unchanged by translations (the frame and the
+  vector are carried by the same transvection), rotated by every yaw ⇒ after a closed loop it
+  is off the heading by the holonomy −κ·A.
+- `web/src/ui/overlay.ts`: 2D overlay with the compass dial, the map inset (Poincaré ball top
+  view for H³, stereographic for S³, metres for E³; domain edges as geodesic polylines, scene
+  footprint, player + heading, beacons, laser) and the laser geodesic projected into the image
+  through Eq. (5) tangents (overlay only, not occluded yet).
+- `IsoCamera.setFromRepoCamera` now splits pitch from the body yaw, so walking stays on the eye
+  plane; hooks route movement through the Player's collision and yaw through the compass.
+- Keys: WASD/shift move, drag look, L laser, M map, B beacon (3 max). Scenes are exported with
+  `--centre-y 1.6`, i.e. the eye plane is 1.6 m above the floor.
+
+### Tests (vitest: 60 green)
+| test | result |
+|---|---|
+| compass holonomy: geodesic triangle in E³/H³/S³, compass angle == 2π − Σ exterior == κ·Area (Gauss–Bonnet via Eq. 5 angles) | pass, < 2e-3 rad |
+| camera import: W == R·T⁻¹ for exact repo cameras, body forward ⟂ transported vertical | pass, 2e-16 |
+| in-browser: walk into the pillar from the "pillar" camera (flat and k = −0.05) | stops 0.64 m from the axis = 0.4 (pillar) + 0.25 (player) |
+| in-browser: curved κ=0 vs flat after the camera refactor | 81–95 dB on 4 cameras |
+
+## Next — Phase 6: lighting & audio (flashlight, lamps, flares, shadow rays, fog, curved audio).
 
 ## Known issues
 - Curved walker ~1.3× slower than the flat shader on the E³ path (generic 4D math); S³ ~2×.

@@ -137,11 +137,13 @@ def _exact_power_owner(s: FoamScene, x: np.ndarray, chunk: int = 2048) -> np.nda
     return out
 
 
-def curved_union(s: FoamScene, n_scene: int, k_max: float | None, n_per_sign: int, verify_samples: int = 0, k_neg: float | None = None) -> dict:
+def curved_union(s: FoamScene, n_scene: int, k_max: float | None, n_per_sign: int, verify_samples: int = 0, k_neg: float | None = None, centre_y: float | None = None) -> dict:
     """§3.5: union adjacency over a sweep of curvatures k ∈ [−k_neg, k_max] (1/m²).
     Default k_max keeps the whole scene inside an S³ hemisphere with margin:
     s_max · max|x − centre| = 1.2  (< π/2). H³ has no such limit; default k_neg = 4·k_max."""
     centre = 0.5 * (s.pos[:n_scene].min(0) + s.pos[:n_scene].max(0))
+    if centre_y is not None:
+        centre[1] = centre_y  # eye plane: the player walks on the totally geodesic plane through the centre
     ext = float(np.linalg.norm(s.pos - centre, axis=-1).max())
     if k_max is None:
         k_max = (1.2 / ext) ** 2
@@ -223,6 +225,7 @@ def main():
     ap.add_argument("--kneg", type=float, default=None, help="max |k| on the H³ side (default 4·kmax)")
     ap.add_argument("--steiner-box", type=float, default=None, help="sample Steiner candidates uniformly in the scene bbox padded by this many metres (fills a domain around open scenes)")
     ap.add_argument("--steiner-iters", type=int, default=10)
+    ap.add_argument("--centre-y", type=float, default=None, help="y (metres) of the embedding centre = the player's eye plane (e.g. floor + 1.6)")
     args = ap.parse_args()
     scene_dir = Path(args.scene_dir)
     s, info = prepare_scene(scene_dir, steiner=not args.no_steiner, seed=args.seed, steiner_box_pad=args.steiner_box, steiner_iters=args.steiner_iters)
@@ -235,7 +238,7 @@ def main():
         extra["cameras"] = json.loads(cams.read_text())
     union = None
     if args.curved:
-        union = curved_union(s, info["n_scene_cells"], args.kmax, args.sweep, verify_samples=4000 if args.verify else 0, k_neg=args.kneg)
+        union = curved_union(s, info["n_scene_cells"], args.kmax, args.sweep, verify_samples=4000 if args.verify else 0, k_neg=args.kneg, centre_y=args.centre_y)
         ui = union["info"]
         print(f"curved sweep: k in [-{union['k_neg']:.4f}, {union['k_max']:.4f}]  union edges {ui['union_edges']}  inflation vs flat {ui['inflation_vs_flat']:.3f}  avg deg {ui['union_avg_degree']:.1f}  max deg {ui['union_max_degree']}")
         for st in ui["samples"]:

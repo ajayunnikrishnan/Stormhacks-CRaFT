@@ -24,6 +24,9 @@ export class IsoCamera {
   fovDeg = 70;
   /** metres per second in physical units; converted with the scene scale */
   speedMps = 2.0;
+  /** Hooks so the Player can run collision (move) and transport the compass (yaw). */
+  moveHook: ((dBody: number[]) => void) | null = null;
+  yawHook: ((R: M4) => void) | null = null;
   private keys = new Set<string>();
   private dragging = false;
   private lastX = 0;
@@ -61,23 +64,25 @@ export class IsoCamera {
     this.kappa = kappa;
     const r = norm3(c.right), u = norm3(c.up);
     const f = norm3(cross3(u, r)); // camera.py: forward = normalize(cross(up, right))
-    // column-major R3 with rows r, u, −f  ⇒ R3[col*3+row]
-    const R3 = [r[0], u[0], -f[0], r[1], u[1], -f[1], r[2], u[2], -f[2]];
+    // Repo cameras have no roll (up = cross(right, f) with a world up), so the rotation with rows
+    // (r, u, −f) factors as R_x(−pitch)·R_y(yaw): keep the body horizontal and the pitch separate.
+    const pitch = Math.asin(Math.max(-1, Math.min(1, f[1])));
+    const yaw = Math.atan2(f[0], -f[2]); // body forward = (sin yaw, 0, −cos yaw) with rotY as defined below
     const pos = embedPoint(kappa, [(c.eye[0] - centre[0]) * scale, (c.eye[1] - centre[1]) * scale, (c.eye[2] - centre[2]) * scale]);
-    this.Wb = mul(rotation(R3), inverse(kappa, translationTo(kappa, pos)));
-    this.pitch = 0;
+    this.setPose(kappa, pos, yaw);
+    this.pitch = pitch;
     const ty = Math.hypot(c.up[0], c.up[1], c.up[2]);
     this.fovDeg = (2 * Math.atan(ty) * 180) / Math.PI;
   }
 
   /** Turn the view right by a (radians): the camera rotates by Q = R_y(−a), so W ← Q⁻¹W = R_y(a)·W. */
-  yawBy(a: number) { this.Wb = mul(rotation(rotY(a)), this.Wb); }
+  yawBy(a: number) { const R = rotation(rotY(a)); this.Wb = mul(R, this.Wb); this.yawHook?.(R); }
 
   /** Body yaw: angle of the body's forward (−z) in world tangent coordinates at the position. */
   yaw(): number {
     // forward in world coords = invWb · (0,0,0,−1); take its spatial part transported to the origin ≈ spatial part
     const f = apply(inverse(this.kappa, this.Wb), new Float64Array([0, 0, 0, -1]));
-    return Math.atan2(-f[1], -f[3]);
+    return Math.atan2(f[1], -f[3]);
   }
 
   /** Physical position in metres (scene frame): log map at the origin / s + centre. */
@@ -114,7 +119,7 @@ export class IsoCamera {
       if (this.keys.has("KeyE") || this.keys.has("Space")) d[1] += sp;
       if (this.keys.has("KeyQ") || this.keys.has("ControlLeft")) d[1] -= sp;
     }
-    if (d[0] || d[1] || d[2]) this.moveBy(d);
+    if (d[0] || d[1] || d[2]) { if (this.moveHook) this.moveHook(d); else this.moveBy(d); }
     reorthonormalize(this.kappa, this.Wb);
   }
 
