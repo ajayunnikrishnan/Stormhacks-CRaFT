@@ -38,7 +38,7 @@ identical; the exporter derives frames, Steiner points and the curved adjacency 
 ## Controls
 
 WASD move (shift run) · drag to look · **G** universe gallery (in Guess mode: the answer picker) · **M** enlarge the map (or click it) · click the **CRaFT** badge for the main menu ·
-**`** developer panel · **Esc** help.
+**`** developer panel · **Esc** help. Lagging? Lower **Render distance** or pick **fast** under Detail in the controls card.
 
 ## Layout
 

@@ -366,6 +366,7 @@ export class Renderer {
     p.u2f("uFlashCone", Math.cos((lo.flashConeDeg[0] * Math.PI) / 180), Math.cos((lo.flashConeDeg[1] * Math.PI) / 180));
     p.u1f("uAmbient", lo.ambient); p.u1f("uRho", lo.rho);
     p.u1f("uFogSigma", lo.fogSigmaPerM / c.params.scale); p.u3f("uFogColor", lo.fogColor[0], lo.fogColor[1], lo.fogColor[2]);
+    p.u1f("uFogEnd", Math.min(c.params.kappa > 0 ? 2 * Math.PI : 1e30, this.fogDistanceM * c.params.scale));
     p.u1f("uExposure", lo.exposure); p.u1i("uLightingOn", lo.enabled ? 1 : 0);
     p.u2f("uTanHalfFov", cam.tanHalfFov[0], cam.tanHalfFov[1]);
     p.umat4("uInvW", Float32Array.from(cam.invW));

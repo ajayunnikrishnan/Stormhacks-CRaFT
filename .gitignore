@@ -16,3 +16,4 @@ web/dist/
 tests/out/
 web/public/test/*.f32
 scenes/*/model.pt
+web/tools/domains.json

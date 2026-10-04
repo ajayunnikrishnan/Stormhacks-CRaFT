@@ -31,7 +31,8 @@ uniform vec3  uFlashColor;   // colour · power
 uniform vec2  uFlashCone;    // (cos inner, cos outer)
 uniform float uAmbient;
 uniform float uRho;
-uniform float uFogSigma;     // 1/unit
+uniform float uFogSigma;     // 1/unit (lit path: exp(−σt))
+uniform float uFogEnd;       // unlit path: the walk's distance cutoff; fade in over the last 45% of it
 uniform vec3  uFogColor;
 uniform float uExposure;
 uniform int   uLightingOn;   // 0 = baked only (reference mode)
@@ -116,8 +117,10 @@ void main() {
     }
   }
 
-  // fog (also the walk's distance cutoff)
-  float fogT = exp(-uFogSigma * min(tHit, 1e6));
+  // fog (also the walk's distance cutoff). Lit: physical exp(−σt). Unlit: no haze up close, a
+  // smooth fade to the fog colour over the last 45% before the cutoff so the end of the walk is not a hard edge.
+  float tF = min(tHit, 1e6);
+  float fogT = uLightingOn == 1 ? exp(-uFogSigma * tF) : 1.0 - smoothstep(0.55 * uFogEnd, uFogEnd, tF);
   col = mix(uFogColor, col, fogT);
   if (uLightingOn == 1) {
     // Reinhard tone map for the lit path; the unlit path shows the captured radiance as is

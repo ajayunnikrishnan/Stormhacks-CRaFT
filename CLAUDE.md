@@ -15,7 +15,10 @@ refer to the writeup.
 - `tools/` — Python 3.12 (`.venv/`): `pf_common.py` (checkpoint I/O, Steiner, triangulation),
   `curved.py` (curved power diagram, κ sweep), `synth_scene.py`, `export_scene.py`,
   `ref_render.py` (numpy port of the Warp kernel), `ref_render_curved.py` (fp64 mirror of the
-  curved shader), `render_reference.py` (runs INSIDE the Power Foam env on CUDA), `make_figures.py`.
+  curved shader), `render_reference.py` (runs INSIDE the Power Foam env on CUDA), `make_figures.py`,
+  `render_polyhedra.py` (matplotlib 3/4-view pictures of every fundamental polyhedron for the
+  gallery, from `web/tools/domains.json` which `node web/tools/dump_domains.mjs` writes from the TS
+  domain definitions; output `web/public/thumbs/*.png`). Re-run both after changing `topology/domain.ts`.
 - `web/` — Vite + TypeScript + WebGL2. `src/geometry/space.ts` ⇄ `shaders/geometry.glsl` are
   **mirrored line for line**; change both or neither. `src/topology/` domains + point location,
   `src/render/` passes (sv_prepass → walk_curved MRT G-buffer → shadow → shade), `src/game/`
@@ -48,9 +51,15 @@ Re-export BOTH `synth_open` (default scene) and `synth_room` after exporter chan
 - Every shader that includes `common.glsl` gets both sampler precisions from it; don't redeclare.
 - Curved shaders are compiled per κ via `#define KAPPA`; `k` must stay a local derived from it.
 - The exporter must compute the scene bbox BEFORE Steiner points and the Morton sort.
+- Performance knobs live in the main controls card: render distance (walk cutoff + unlit fog window,
+  default 14 m) and detail chips (resolution presets; `auto` targets 30 fps). The canvas is 1× by
+  default; HiDPI is a developer-panel option. The ray walk cost is roughly linear in render distance.
 - Positions stored in the manifest/charts are metres in the scene frame; model coordinates are
   metres × s with the centre at the eye plane (`--centre-y 1.6`). Convert with `embedPoint` /
   `logAtOrigin`, never by scaling model vectors directly.
+- Box universes (3-torus, half-turn, Klein) are sized from the scene bbox but must CONTAIN the
+  floor slab: `domHalf` in main.ts puts the bottom face 5 cm below the floor surface. A face on or
+  above the floor makes downward rays teleport forever (black lower half of the view).
 - The Bash tool's cwd resets between calls: use absolute paths or `cd` inside each command.
 - The browser pane may be hidden: verify through `window.craft.*` hooks (`render`, `renderCurved`,
   `renderLit`, `walk`, `setPose`, `start`, `setTopology`, `bench`, `gallery`) and PNG round-trips.

@@ -19,10 +19,11 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 const canvas = $<HTMLCanvasElement>("gl");
 const hud = $("hud"), status = $("status"), panelEl = $("panel"), devToggle = $<HTMLButtonElement>("devToggle");
 const scaleEl = $<HTMLInputElement>("scale"), scaleV = $("scaleV");
+const distEl = $<HTMLInputElement>("dist"), distV = $("distV"), hidpiEl = $<HTMLInputElement>("hidpi");
 const curvEl = $<HTMLInputElement>("curv"), curvV = $("curvV"), curvWord = $("curvWord"), spaceEl = $("space");
 const camsEl = $<HTMLSelectElement>("cams"), topoEl = $<HTMLSelectElement>("topo");
 const modeEl = $<HTMLInputElement>("mode"), nearCullEl = $<HTMLInputElement>("nearcull"), repoPixEl = $<HTMLInputElement>("repopix"), floorEl = $<HTMLInputElement>("floor");
-const collideEl = $<HTMLInputElement>("collide"), lightEl = $<HTMLInputElement>("lighting"), fogEl = $<HTMLInputElement>("fog");
+const collideEl = $<HTMLInputElement>("collide"), lightEl = $<HTMLInputElement>("lighting");
 const qualityEl = $<HTMLSelectElement>("quality"), fovEl = $<HTMLInputElement>("fov"), fovV = $("fovV"), sensEl = $<HTMLInputElement>("sens"), tintsEl = $<HTMLInputElement>("tints");
 const titleEl = $("title"), helpEl = $("help"), mapCanvas = $<HTMLCanvasElement>("map");
 const controlsEl = $("controls"), quizEl = $("quiz"), quizResultEl = $("quizResult");
@@ -65,6 +66,11 @@ async function main() {
   const bb0 = scene.manifest.bbox_min, bb1 = scene.manifest.bbox_max;
   const flatHalf: [number, number, number] = [(bb1[0] - bb0[0]) / 2, (bb1[1] - bb0[1]) / 2, (bb1[2] - bb0[2]) / 2];
   const horizExtent = Math.max(flatHalf[0], flatHalf[2]);
+  // Box universes must CONTAIN the floor slab: the domain is centred on the eye plane (model origin,
+  // renderer.centre[1] metres up) and the bbox's bottom is the floor's top surface, so a bbox-sized
+  // box puts its bottom face above the floor and downward rays teleport forever. Put the bottom face
+  // 5 cm inside the ~10 cm slab: the floor is hit normally and the ceiling shows the floor's underside.
+  const domHalf: [number, number, number] = [flatHalf[0], renderer.centre[1] - bb0[1] + 0.05, flatHalf[2]];
 
   const applyCamera = (c: RepoCamera) => {
     flyCam.setFromRepoCamera(c);
@@ -91,7 +97,7 @@ async function main() {
     describe();
   };
   const setTopology = (id: DomainId) => {
-    domain = makeDomain(id, flatHalf);
+    domain = makeDomain(id, domHalf);
     if (domain && domain.kappa !== 0) { const s = domain.inradius / horizExtent; setK(domain.kappa * s * s); }
     else if (domain) setK(0);
     curvEl.disabled = !!domain;
@@ -123,12 +129,18 @@ async function main() {
     else { const pr = PRESETS[q]; scaleEl.value = String(pr.scale); scaleV.textContent = pr.scale.toFixed(2); lighting.shadowScale = pr.shadow; renderer.maxHops = pr.hops; }
   };
   qualityEl.addEventListener("change", applyQuality);
+  const qchips = document.querySelectorAll<HTMLElement>(".qchip");
+  const syncQChips = () => qchips.forEach((c) => c.classList.toggle("on", c.dataset.q === qualityEl.value));
+  qchips.forEach((c) => c.addEventListener("click", () => { qualityEl.value = c.dataset.q!; applyQuality(); syncQChips(); }));
+  // render distance: the walk stops at D metres and the fog reaches ~2% there, so the cutoff fades instead of clipping
+  const applyDistance = () => { const D = Number(distEl.value); renderer.fogDistanceM = D; lighting.fogSigmaPerM = 2.5 / D; distV.textContent = `${D} m`; };
+  distEl.addEventListener("input", applyDistance);
 
   let devVisible = false;
   const toggleDev = () => { devVisible = !devVisible; panelEl.style.display = devVisible ? "block" : "none"; hud.style.display = devVisible ? "block" : "none"; };
   devToggle.addEventListener("click", toggleDev);
 
-  const gallery = new Gallery(document.body, buildCards(flatHalf), (id) => setTopology(id));
+  const gallery = new Gallery(document.body, buildCards(domHalf), (id) => setTopology(id));
   let thumbsDone = false;
   const renderThumbnails = async () => {
     if (thumbsDone) return;
@@ -161,7 +173,7 @@ async function main() {
 
   // ---- guess-the-universe mode: a hidden random universe, untinted walls, map without the domain
   const quizPicker = new Gallery(document.body, gallery.cards, (id) => submitGuess(id), {
-    title: "Which universe are you in?", subtitle: "Pick the gluing diagram that matches what you walked through. Arrows show how each wall is glued to its partner; the badge is the curvature.", closeLabel: "Keep exploring", showThumbs: false,
+    title: "Which universe are you in?", subtitle: "Pick the polyhedron that matches what you walked through. Walls of one colour are glued to each other; the label on a face gives the twist; the badge is the curvature.", closeLabel: "Keep exploring", showThumbs: false,
   });
   const quizRound = $("quizRound"), quizScore = $("quizScore");
   const quizCards = gallery.cards;
@@ -186,7 +198,7 @@ async function main() {
     $("quizVerdict").textContent = ok ? "Correct!" : "Not quite.";
     $("quizVerdict").className = ok ? "ok" : "bad";
     $("quizGuessed").textContent = ok ? `You recognised ${ans.name}.` : `You guessed ${g.name}. You were actually in:`;
-    $("quizSvg").innerHTML = ans.svg.replace('width="150" height="150"', 'width="120" height="120"');
+    $("quizSvg").innerHTML = `<img src="${ans.img}" alt="" style="width:120px;height:120px;object-fit:contain;border-radius:10px;background:radial-gradient(circle at 50% 45%, #1a1f30, #0b0d14)">`;
     $("quizAnswerName").textContent = ans.name;
     $("quizAnswerHint").textContent = `${ans.badge} · ${ans.orientable} · ${ans.hint}`;
     quizScore.textContent = `score ${quiz.score}`;
@@ -253,7 +265,8 @@ async function main() {
     setK, setTopology, start, goMenu,
     quiz: () => (quiz ? { ...quiz } : null), guess: submitGuess, nextRound: startRound,
     setSlider: (u: number) => { curvEl.value = String(u); curvEl.dispatchEvent(new Event("input")); },
-    setFog: (m: number, hops?: number) => { renderer.fogDistanceM = m; if (hops) renderer.maxHops = hops; },
+    setFog: (m: number, hops?: number) => { distEl.value = String(m); applyDistance(); if (hops) renderer.maxHops = hops; },
+    setDistance: (m: number) => { distEl.value = String(m); applyDistance(); },
     moveCamera: (dx: number, dy: number, dz: number) => { isoCam.moveBy([dx, dy, dz]); player.recentre(isoCam, domain); },
     walk: (dx: number, dy: number, dz: number) => { player.tryMove(isoCam, renderer.curved, [dx, dy, dz], curvatureParams(k).scale); player.recentre(isoCam, domain); },
     yaw: (a: number) => isoCam.yawBy(a),
@@ -276,7 +289,7 @@ async function main() {
 
   // ---------------------------------------------------------------- start
   status.remove();
-  applyQuality();
+  applyQuality(); syncQChips(); applyDistance();
   setTopology("none");
   if (cameras.length) applyCamera(cameras[0]);
   const deep = params.get("mode");
@@ -287,7 +300,7 @@ async function main() {
   function loop(now: number) {
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = hidpiEl.checked ? Math.min(window.devicePixelRatio || 1, 2) : 1; // 1× by default: the ray walk is per pixel
     const W = Math.floor(canvas.clientWidth * dpr), H = Math.floor(canvas.clientHeight * dpr);
     if (canvas.width !== W || canvas.height !== H) { canvas.width = W; canvas.height = H; }
     const p = curvatureParams(k);
@@ -300,7 +313,6 @@ async function main() {
         player.locate(renderer.curved, isoCam.worldPos());
       }
       lighting.enabled = lightEl.checked; lighting.flashlight = lightEl.checked;
-      lighting.fogSigmaPerM = Number(fogEl.value);
       lighting.camFwdWorld = apply(isoCam.invW(), v4(0, 0, 0, -1));
       renderer.frameCurved(isoState(W / H), opts(), W, H, Number(scaleEl.value), lighting);
       const invWb = inverse(p.kappa, isoCam.Wb);
@@ -315,7 +327,7 @@ async function main() {
     if (fpsAcc > 0.5) {
       fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0;
       if (qualityEl.value === "auto" && modeEl.checked) {
-        if (fps < 28 && autoScale > 0.4) autoScale = Math.max(0.4, autoScale * 0.9);
+        if (fps < 30 && autoScale > 0.35) autoScale = Math.max(0.35, autoScale * 0.88);
         else if (fps > 50 && autoScale < 1) autoScale = Math.min(1, autoScale * 1.08);
         scaleEl.value = autoScale.toFixed(2); scaleV.textContent = autoScale.toFixed(2);
       }

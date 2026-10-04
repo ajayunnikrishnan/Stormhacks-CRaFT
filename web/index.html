@@ -42,6 +42,12 @@
       .chips { display: flex; gap: 8px; margin-top: 10px; }
       .chip { flex: 1; padding: 6px 0; border-radius: 8px; border: 1px solid var(--card-border); background: rgba(255,255,255,0.04); color: var(--muted); font-size: 11px; cursor: pointer; text-align: center; }
       .chip.on { color: var(--text); background: rgba(255,255,255,0.12); }
+      .sub { display: flex; justify-content: space-between; margin-top: 14px; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+      .sub span { font-family: var(--mono); text-transform: none; letter-spacing: 0; color: var(--text); }
+      input[type=range].s { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; margin: 8px 0 2px; border-radius: 2px; background: rgba(255,255,255,0.18); outline: none; }
+      input[type=range].s::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 2px solid #1a1f2e; cursor: pointer; }
+      .qchip { flex: 1; padding: 5px 0; border-radius: 8px; border: 1px solid var(--card-border); background: rgba(255,255,255,0.04); color: var(--muted); font-size: 11px; cursor: pointer; text-align: center; }
+      .qchip.on { color: var(--text); background: rgba(255,255,255,0.12); }
 
       /* map */
       #map { position: fixed; left: 20px; bottom: 20px; width: 190px; height: 190px; border-radius: 14px; cursor: zoom-in; transition: width .25s ease, height .25s ease, left .25s ease, bottom .25s ease; }
@@ -121,6 +127,10 @@
       <button id="galleryBtn" class="btn primary">Choose a universe<small>3-torus, {4,3,5}, Poincaré dodecahedral space… (G)</small></button>
       <button id="openBtn" class="btn">Open space<small>leave the tiling · reset to flat</small></button>
       <div class="chips"><button class="chip" data-k="-0.5">hyperbolic</button><button class="chip on" data-k="0">flat</button><button class="chip" data-k="0.5">spherical</button></div>
+      <div class="sub">Render distance <span id="distV">14 m</span></div>
+      <input id="dist" class="s" type="range" min="6" max="60" step="1" value="14" />
+      <div class="sub" style="margin-top:10px">Detail</div>
+      <div class="chips" style="margin-top:6px"><button class="qchip" data-q="low">fast</button><button class="qchip" data-q="medium">balanced</button><button class="qchip" data-q="high">sharp</button><button class="qchip" data-q="auto">auto</button></div>
     </div>
 
     <div id="quiz" class="card">
@@ -158,7 +168,7 @@
       <label>mouse <input id="sens" type="range" min="0.5" max="3" step="0.1" value="1" /></label>
       <label><input id="tints" type="checkbox" checked /> tint walls by face pair</label>
       <label><input id="lighting" type="checkbox" /> experimental lighting</label>
-      <label>fog σ (1/m) <input id="fog" type="range" min="0" max="0.2" step="0.005" value="0.03" /></label>
+      <label><input id="hidpi" type="checkbox" /> HiDPI canvas (2×, much slower)</label>
       <label>space <select id="topo"></select></label>
       <label>camera <select id="cams"></select></label>
       <label><input id="nearcull" type="checkbox" /> near-camera cull (repo parity)</label>
