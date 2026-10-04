@@ -173,7 +173,10 @@ def main():
     fr.update(n_cells_before_crop=int(n0), n_cells_after_crop=int(ck2.n), crop={"radius": args.crop_radius, "below": args.crop_below, "above": args.crop_above})
     ck2.config = dict(ck2.config); ck2.config["craft_canonical"] = {k: v for k, v in fr.items() if k != "R"}
     save_checkpoint(out, ck2)
-    (out / "cameras.json").write_text(json.dumps(transform_cameras(cams, R, s, c), indent=1))
+    # the scene's visible cameras: the rendered reference cameras when there are any (the harness
+    # compares camera i against refs/cam_i), else the estimation cameras
+    vis = json.loads((sd / "refs" / "cameras.json").read_text()) if (sd / "refs" / "cameras.json").exists() else cams
+    (out / "cameras.json").write_text(json.dumps(transform_cameras(vis, R, s, c), indent=1))
     (out / "frame.json").write_text(json.dumps(fr, indent=1))
     if (sd / "refs").exists():
         shutil.copytree(sd / "refs", out / "refs", dirs_exist_ok=True)

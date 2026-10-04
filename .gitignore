@@ -17,3 +17,7 @@ tests/out/
 web/public/test/*.f32
 scenes/*/model.pt
 web/tools/domains.json
+web/public/scenes/*/refs/*.f32
+scenes/*/refs/*.npy
+scenes/*/refs_train/
+scenes/*_raw/
