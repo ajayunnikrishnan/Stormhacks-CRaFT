@@ -1,0 +1,61 @@
+# CLAUDE.md — CRaFT / Surveyor
+
+Hackathon entry (Huawei "Beyond Euclid"): **CRaFT, Curved Radiance Foam Tracing** — a WebGL2 ray
+tracer that walks a captured Power Foam scene along exact geodesics of H³/E³/S³ — and
+**Surveyor**, the game built on it (measure the curvature with light). Read `PROGRESS.md` first for
+status, then `docs/WRITEUP.md` for the maths. Equation numbers in code comments (`// Eq. (6)`)
+refer to the writeup.
+
+## Layout
+
+- `powerfoam/` — upstream repo as a git submodule. **Never modify it.** Export code lives in `tools/`.
+- `tools/` — Python 3.12 (`.venv/`): `pf_common.py` (checkpoint I/O, Steiner, triangulation),
+  `curved.py` (curved power diagram, κ sweep), `synth_scene.py`, `export_scene.py`,
+  `ref_render.py` (numpy port of the Warp kernel), `ref_render_curved.py` (fp64 mirror of the
+  curved shader), `render_reference.py` (runs INSIDE the Power Foam env on CUDA), `make_figures.py`.
+- `web/` — Vite + TypeScript + WebGL2. `src/geometry/space.ts` ⇄ `shaders/geometry.glsl` are
+  **mirrored line for line**; change both or neither. `src/topology/` domains + point location,
+  `src/render/` passes (sv_prepass → walk_curved MRT G-buffer → shadow → shade), `src/game/`
+  camera/player/tools/levels, `src/ui/` overlay/HUD/gallery.
+- `scenes/` — checkpoints in Power Foam's own format (`model.pt`, `config.yaml`, `cameras.json`).
+  Exported scenes go to `web/public/scenes/<name>/` (tracked, so the static build is self-contained).
+- `tests/python/` (pytest) and `web/tests/` (vitest). `web/harness.html` compares GPU vs CPU
+  references and GLSL vs TS.
+
+## Commands
+
+```bash
+. .venv/bin/activate && python -m pytest tests/python -q          # 22 tests
+cd web && npx tsc --noEmit && npx vitest run                       # 67 tests
+cd web && npx vite                                                 # http://127.0.0.1:5173 (?level=tutorial|lamps|home|exam|sandbox)
+python tools/synth_scene.py --out scenes/synth_open --open
+python tools/export_scene.py scenes/synth_open --out web/public/scenes/synth_open --curved --sweep 12 --kmax 0.042 --steiner-box 2.0 --steiner-iters 14 --centre-y 1.6
+```
+
+Re-export BOTH `synth_open` (default scene) and `synth_room` after exporter changes.
+
+## Rules that have bitten us
+
+- **Never change the math silently.** New formulas get a test against numeric ground truth
+  (bisection, brute force, Monte-Carlo) before the shader uses them. If a test disagrees with the
+  spec, stop and report; don't tune constants.
+- Keep the repo kernel's order of operations in `walk_flat.frag` / `ref_render.py`; conditioning
+  rewrites (same equations, different order) go in the curved path and are documented in the
+  writeup §8.
+- Every shader that includes `common.glsl` gets both sampler precisions from it; don't redeclare.
+- Curved shaders are compiled per κ via `#define KAPPA`; `k` must stay a local derived from it.
+- The exporter must compute the scene bbox BEFORE Steiner points and the Morton sort.
+- Positions stored in the manifest/charts are metres in the scene frame; model coordinates are
+  metres × s with the centre at the eye plane (`--centre-y 1.6`). Convert with `embedPoint` /
+  `logAtOrigin`, never by scaling model vectors directly.
+- The Bash tool's cwd resets between calls: use absolute paths or `cd` inside each command.
+- The browser pane may be hidden: verify through `window.surveyor.*` hooks (`render`, `renderCurved`,
+  `renderLit`, `walk`, `setPose`, `startLevel`, `levelState`, `bench`, `gallery`) and PNG round-trips.
+  `gl.finish()` does not block when hidden; benchmarks sync with a 1-px readback.
+
+## Open items
+
+- PSNR against the real Warp kernel on a **trained** scene (needs CUDA; see `docs/TRAINING_VASTAI.md`,
+  then `tools/render_reference.py`). Everything so far used synthetic scenes.
+- Cut per the prompt's cut order: level 5 (topology identification), SnapPy census manifolds.
+- Demo video; GitHub remote + Pages deploy (`.github/workflows/pages.yml` is ready).
