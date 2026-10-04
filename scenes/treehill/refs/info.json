@@ -1,0 +1,7 @@
+{
+ "n_points_with_steiner": 155123,
+ "n_steiner": 5123,
+ "n_edges_directed": 3327884,
+ "split": "test",
+ "downsample": 4
+}

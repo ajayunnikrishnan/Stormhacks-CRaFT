@@ -228,6 +228,7 @@ def main():
     ap.add_argument("--steiner-box", type=float, default=None, help="sample Steiner candidates uniformly in the scene bbox padded by this many metres (fills a domain around open scenes)")
     ap.add_argument("--steiner-iters", type=int, default=10)
     ap.add_argument("--centre-y", type=float, default=None, help="y (metres) of the embedding centre = the player's eye plane (e.g. floor + 1.6)")
+    ap.add_argument("--background", type=float, nargs=3, default=None, metavar=("R", "G", "B"), help="colour for rays that leave the scene / fog colour in the app (e.g. a sky grey for cropped outdoor captures)")
     ap.add_argument("--walk-box", type=float, nargs=6, default=None, metavar=("XMIN", "YMIN", "ZMIN", "XMAX", "YMAX", "ZMAX"), help="walkable region (m): sizes the box universes, the map footprint and the floor (YMIN); default = scene bbox")
     args = ap.parse_args()
     scene_dir = Path(args.scene_dir)
@@ -238,6 +239,8 @@ def main():
     extra = {}
     if args.walk_box is not None:
         extra["walk_bbox"] = [args.walk_box[0:3], args.walk_box[3:6]]
+    if args.background is not None:
+        extra["background"] = list(args.background)
     cams = scene_dir / "cameras.json"
     if cams.exists():
         extra["cameras"] = json.loads(cams.read_text())

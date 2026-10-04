@@ -63,8 +63,9 @@ def transform_checkpoint(ck: RawCheckpoint, R: np.ndarray, s: float, c: np.ndarr
     R = np.asarray(R, np.float64); c = np.asarray(c, np.float64)
     assert np.allclose(R @ R.T, np.eye(3), atol=1e-9) and np.linalg.det(R) > 0, "R must be a proper rotation"
     pts = (s * (ck.points.astype(np.float64) @ R.T - c)).astype(np.float32)
-    radii = inverse_softplus(s * softplus(ck.radii.astype(np.float64))).astype(np.float32)
-    density = inverse_softplus(softplus(ck.density.astype(np.float64)) / s).astype(np.float32)
+    # clamp: softplus underflows to exactly 0 for very negative raw values, and softplus⁻¹(0) = −∞
+    radii = inverse_softplus(np.maximum(s * softplus(ck.radii.astype(np.float64)), 1e-9)).astype(np.float32)
+    density = inverse_softplus(np.maximum(softplus(ck.density.astype(np.float64)) / s, 1e-9)).astype(np.float32)
     n, t, b = quat_frame(ck.quaternions.astype(np.float64))
     q = frame_to_quat(n @ R.T, t @ R.T, b @ R.T).astype(np.float32)
     N, k = ck.n, ck.k

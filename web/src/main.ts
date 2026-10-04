@@ -60,7 +60,8 @@ async function main() {
   player.centre = renderer.centre;
   const map = new MapInset(mapCanvas);
   const lights = new Lights();
-  const lighting: LightingOptions = { ...DEFAULT_LIGHTING, lights, enabled: false, flashlight: false, fogSigmaPerM: 0.03, fogColor: [0.03, 0.035, 0.05] };
+  const bg: [number, number, number] = scene.manifest.background ?? [0, 0, 0];
+  const lighting: LightingOptions = { ...DEFAULT_LIGHTING, lights, enabled: false, flashlight: false, fogSigmaPerM: 0.03, fogColor: scene.manifest.background ? bg : [0.03, 0.035, 0.05] };
   renderer.benchLighting = lighting;
 
   // ---------------------------------------------------------------- state
@@ -270,7 +271,7 @@ async function main() {
   });
 
   // ---------------------------------------------------------------- test hooks
-  const opts = (): RenderOptions => ({ threshold: 1e-2, nearCull: nearCullEl.checked, repoPixelGrid: repoPixEl.checked, background: [0, 0, 0] });
+  const opts = (): RenderOptions => ({ threshold: 1e-2, nearCull: nearCullEl.checked, repoPixelGrid: repoPixEl.checked, background: bg });
   const isoState = (aspect: number): IsoCameraState => ({ invW: isoCam.invW(), rayO: isoCam.worldPos(), tanHalfFov: isoCam.tanHalfFov(aspect) });
   const hooks = {
     scene: scene.manifest,

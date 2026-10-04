@@ -68,7 +68,7 @@ Re-export BOTH `synth_open` (default scene) and `synth_room` after exporter chan
 
 ## Open items
 
-- PSNR against the real Warp kernel on a **trained** scene (needs CUDA; see `docs/TRAINING_VASTAI.md`,
-  then `tools/render_reference.py`). Everything so far used synthetic scenes.
+- ~~PSNR against the real Warp kernel on a trained scene~~ DONE 2026-10-04: treehill, 41–44 dB
+  (PROGRESS.md "Real capture"). Scenes: `synthetic` (synth_open) and `treehill`; `?scene=<id>`.
 - Cut per the prompt's cut order: level 5 (topology identification), SnapPy census manifolds.
 - Demo video; GitHub remote + Pages deploy (`.github/workflows/pages.yml` is ready).

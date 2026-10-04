@@ -7,6 +7,23 @@
 > the gluing diagram, reveal + running score) that replaces the old exam level. Phases 5–7 below
 > describe code that is partly retired; the maths and tests remain.
 
+## Real capture — Mip-NeRF 360 "treehill" (2026-10-04)
+
+- Trained on a Vast.ai RTX 4090 (host 80573) with `configs/mipnerf360_outdoor.yaml` at the web
+  budget: `--final_points 150000 --num_texel_sites 4 --sv_dof 4`, 30k iterations in ~12 min.
+  Experiment `treehill_150k_k4_d4`; checkpoint 73 MB; 4 test views rendered with the repo's own
+  Warp ray tracer (`tools/render_reference.py`, 1267×832) + all 123 training cameras dumped.
+- Canonicalised with `tools/canonicalize_scene.py` (123 cameras): scale 0.994 m/unit, orbit radius
+  4.66 m, floor plane fitted from 17k floor cells, cropped to a 12 m radius → 123 019 cells.
+- Exported with `--curved --kmax 0.015 --walk-box -4 0 -4 4 3.2 4 --background 0.72 0.74 0.78` →
+  `web/public/scenes/treehill` (126 927 cells incl. Steiner, 49 MB), selectable as "Treehill" on the
+  title screen (`?scene=treehill`). 40 fps at 502×450 on the dev Mac.
+- **PSNR vs Power Foam's own CUDA ray tracer (the Phase 1 acceptance, finally on a real scene):**
+  uncropped export (`web/public/scenes/treehill_full`, not tracked) vs `refs/cam_00{0..3}` at
+  1267×832: **43.85 / 41.31 / 44.39 / 43.36 dB**, mean radiance equal to 4 decimals, 3% of pixels
+  off by > 0.02 (seam tie-breaks + fp16 attributes). The cropped export scores 11–14 dB against the
+  same references only because the far sky/hills are removed (rays escape to the background).
+
 ## Phase 0 — Recon — DONE (commit a111efd)
 `docs/ARCHITECTURE.md`; Power Foam pinned as submodule `powerfoam/` @ 9639225.
 

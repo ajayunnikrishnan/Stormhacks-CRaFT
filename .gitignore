@@ -21,3 +21,5 @@ web/public/scenes/*/refs/*.f32
 scenes/*/refs/*.npy
 scenes/*/refs_train/
 scenes/*_raw/
+web/public/scenes/treehill_full/
+scenes/treehill_full/
