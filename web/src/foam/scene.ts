@@ -1,5 +1,5 @@
 /**
- * Loads an exported foam scene (tools/export_scene.py, format "surveyor-foam-v1")
+ * Loads an exported foam scene (tools/export_scene.py, format "craft-foam-v1")
  * and packs it into WebGL2 data textures. See docs/ARCHITECTURE.md §9 for the layout.
  */
 import { dataTexture, type DataTexture } from "../render/gl";

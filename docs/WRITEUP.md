@@ -1,9 +1,10 @@
 # CRaFT: Curved Radiance Foam Tracing
 
-*Exact geodesic ray tracing of captured scenes in constant-curvature spaces.*
-*Huawei Custom Challenge #1, "Beyond Euclid". Mathematical and technical write-up of CRaFT (the method) and Surveyor (the game built on it).*
+*Exact Geodesic Ray Tracing of Radiance Foams in Constant-Curvature Spaces*
 
-CRaFT renders a captured Power Foam scene by ray tracing it along exact geodesics of H³, E³ or S³. Surveyor, the game built on it, drops the player into a universe of unknown shape. Everything they see is a real
+*Huawei Custom Challenge #1, "Beyond Euclid". Mathematical and technical write-up.*
+
+CRaFT renders a captured Power Foam scene by ray tracing it along exact geodesics of H³, E³ or S³, and lets the viewer walk through it in first person with a continuous curvature slider and a gallery of closed universes. Everything they see is a real
 captured 3D scene (a **Power Foam** reconstruction: an explicit volumetric partition of space
 into bounded power cells with oriented, textured dipole surfaces) **ray traced along exact,
 closed-form geodesics** of hyperbolic, flat or spherical space. The player works out the
@@ -287,7 +288,7 @@ A discrete GPU is several times faster than this integrated one.
 Jeff Weeks' *Curved Spaces* (closed 3-manifolds, polygon rendering), *Hyperbolica* (hyperbolic/
 spherical game, mesh rendering with per-vertex projection), *Hyperbolic VR* (Hart, Hawksley,
 Matsumoto, Segerman; ray marching) and Thurston-style ray marchers (e.g. Nelson–Segerman–Woodard)
-render synthetic geometry. Surveyor renders a **captured photographic scene** (a differentiable
+render synthetic geometry. CRaFT renders a **captured photographic scene** (a differentiable
 foam reconstruction) with **exact per-cell geodesic intersections** rather than marching, treats
 the curvature as a **continuous slider** with one κ-parameterised geometry layer, and makes the
 geometry **measurable** by the player with physically correct light falloff and holonomy.

@@ -1,4 +1,6 @@
-# CRaFT / Surveyor — demo script (2–3 minutes)
+# CRaFT — demo script (2–3 minutes)
+
+> Note: the tool-based levels described below were removed from the shipped build; the demo now walks the explorer: title → Explore → slider (flat → hyperbolic → spherical) → gallery (3-torus, {4,3,5}, Poincaré dodecahedral space, Klein) → enlarged map. Keep the narration about measurement as spoken explanation.
 
 Open `web/` in Chrome (`npx vite`, then http://127.0.0.1:5173/?level=tutorial). Quality "auto".
 Have the pause menu (Esc) ready for the controls.

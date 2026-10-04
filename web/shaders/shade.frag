@@ -119,8 +119,10 @@ void main() {
   // fog (also the walk's distance cutoff)
   float fogT = exp(-uFogSigma * min(tHit, 1e6));
   col = mix(uFogColor, col, fogT);
-  // Reinhard tone map
-  col *= uExposure;
-  col = col / (1.0 + col);
+  if (uLightingOn == 1) {
+    // Reinhard tone map for the lit path; the unlit path shows the captured radiance as is
+    col *= uExposure;
+    col = col / (1.0 + col);
+  }
   oColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }

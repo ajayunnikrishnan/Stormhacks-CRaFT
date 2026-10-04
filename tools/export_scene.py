@@ -187,7 +187,7 @@ def write_scene(s: FoamScene, out_dir: Path, info: dict, extra_meta: dict | None
     (out_dir / "scene.bin").write_bytes(data)
     lo, hi = np.array(info["scene_bbox"][0]), np.array(info["scene_bbox"][1])
     manifest = {
-        "format": "surveyor-foam-v1",
+        "format": "craft-foam-v1",
         "n": n,
         "k": k,
         "d": d,

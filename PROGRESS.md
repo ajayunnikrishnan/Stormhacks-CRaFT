@@ -1,4 +1,9 @@
-# PROGRESS — CRaFT: Curved Radiance Foam Tracing (+ Surveyor)
+# PROGRESS — CRaFT: Curved Radiance Foam Tracing
+
+> 2026-10-04: at the user's request the game layer (beacons, lamps, light meter, laser,
+> flashlight, compass dial, levels, exam) was removed from the app. CRaFT ships as a first-person
+> explorer: title screen, curvature slider, universe gallery, click-to-enlarge map. Phases 5–7 below
+> describe code that is partly retired; the maths and tests remain.
 
 ## Phase 0 — Recon — DONE (commit a111efd)
 `docs/ARCHITECTURE.md`; Power Foam pinned as submodule `powerfoam/` @ 9639225.
@@ -17,7 +22,7 @@ Stack: TypeScript + WebGL2 + Vite (`web/`), Python 3.12 venv (`.venv/`) for tool
 - `tools/ref_render.py` — numpy port of `RayTracer.benchmark_kernel`, same order of ops.
 - `web/` — scene loader → data textures (row-wrapped 4096-wide), SV pre-pass
   (`shaders/sv_prepass.frag`), flat walk (`shaders/walk_flat.frag`), composite, fly camera,
-  HUD with FPS and GPU pass timers, `window.surveyor.{render,bench}` test hooks.
+  HUD with FPS and GPU pass timers, `window.craft.{render,bench}` test hooks.
 - `web/harness.html` — renders the manifest cameras and compares to the CPU reference.
 
 ### Acceptance (synthetic scene, 160×120, threshold 1e-2, near-cull on, repo pixel grid)

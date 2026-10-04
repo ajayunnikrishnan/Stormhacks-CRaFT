@@ -45,7 +45,7 @@ export function view(buf: ArrayBuffer, s: Section): Float32Array | Uint16Array |
 }
 
 export function parseScene(manifest: SceneManifest, buf: ArrayBuffer): SceneArrays {
-  if (manifest.format !== "surveyor-foam-v1") throw new Error(`unknown scene format ${manifest.format}`);
+  if (manifest.format !== "craft-foam-v1") throw new Error(`unknown scene format ${manifest.format}`);
   const S = manifest.sections;
   const out: SceneArrays = {
     manifest, n: manifest.n, k: manifest.k, d: manifest.d,

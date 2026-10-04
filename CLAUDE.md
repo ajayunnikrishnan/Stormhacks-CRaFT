@@ -1,8 +1,11 @@
-# CLAUDE.md — CRaFT / Surveyor
+# CLAUDE.md — CRaFT
 
-Hackathon entry (Huawei "Beyond Euclid"): **CRaFT, Curved Radiance Foam Tracing** — a WebGL2 ray
-tracer that walks a captured Power Foam scene along exact geodesics of H³/E³/S³ — and
-**Surveyor**, the game built on it (measure the curvature with light). Read `PROGRESS.md` first for
+Hackathon entry (Huawei "Beyond Euclid"): **CRaFT, Curved Radiance Foam Tracing** — *Exact Geodesic
+Ray Tracing of Radiance Foams in Constant-Curvature Spaces*. A WebGL2 first-person explorer that walks
+a captured Power Foam scene along exact geodesics of H³/E³/S³, with a curvature slider, a gallery of
+closed universes and a map inset. (The earlier game layer — beacons, lamps, light meter, laser,
+levels — was removed at the user's request on 2026-10-04; the maths lives on in `game/tools.ts` and
+the lighting passes stay in the renderer behind the developer panel.) Read `PROGRESS.md` first for
 status, then `docs/WRITEUP.md` for the maths. Equation numbers in code comments (`// Eq. (6)`)
 refer to the writeup.
 
@@ -16,7 +19,7 @@ refer to the writeup.
 - `web/` — Vite + TypeScript + WebGL2. `src/geometry/space.ts` ⇄ `shaders/geometry.glsl` are
   **mirrored line for line**; change both or neither. `src/topology/` domains + point location,
   `src/render/` passes (sv_prepass → walk_curved MRT G-buffer → shadow → shade), `src/game/`
-  camera/player/tools/levels, `src/ui/` overlay/HUD/gallery.
+  camera/player/tools, `src/ui/` map inset (overlay.ts) / gallery.
 - `scenes/` — checkpoints in Power Foam's own format (`model.pt`, `config.yaml`, `cameras.json`).
   Exported scenes go to `web/public/scenes/<name>/` (tracked, so the static build is self-contained).
 - `tests/python/` (pytest) and `web/tests/` (vitest). `web/harness.html` compares GPU vs CPU
@@ -49,8 +52,8 @@ Re-export BOTH `synth_open` (default scene) and `synth_room` after exporter chan
   metres × s with the centre at the eye plane (`--centre-y 1.6`). Convert with `embedPoint` /
   `logAtOrigin`, never by scaling model vectors directly.
 - The Bash tool's cwd resets between calls: use absolute paths or `cd` inside each command.
-- The browser pane may be hidden: verify through `window.surveyor.*` hooks (`render`, `renderCurved`,
-  `renderLit`, `walk`, `setPose`, `startLevel`, `levelState`, `bench`, `gallery`) and PNG round-trips.
+- The browser pane may be hidden: verify through `window.craft.*` hooks (`render`, `renderCurved`,
+  `renderLit`, `walk`, `setPose`, `start`, `setTopology`, `bench`, `gallery`) and PNG round-trips.
   `gl.finish()` does not block when hidden; benchmarks sync with a 1-px readback.
 
 ## Open items
