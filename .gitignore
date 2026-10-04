@@ -4,6 +4,7 @@ web/dist/
 *.bin
 *.bin.gz
 *.bin.br
+!web/public/scenes/**/*.bin
 output/
 data/
 __pycache__/

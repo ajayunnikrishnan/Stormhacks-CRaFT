@@ -55,6 +55,8 @@ uniform int   uFacePartner[MAX_FACES];
 uniform float uFaceChartHalf[MAX_FACES]; // chart half-extent of the PARTNER face
 uniform int   uMaxHops;
 uniform usampler2D uLocGrid;           // R32UI: face*G*G + j*G + i → cell id
+uniform vec3  uFaceTint[MAX_FACES];    // colour of each face pair (gallery colours), applied to light through that face
+uniform float uTintStrength;           // 0 = off
 
 float cellValue(float kk, vec4 a, vec4 x) { return kk * a.x * x.x + dot(a.yzw, x.yzw); }
 
@@ -110,6 +112,7 @@ void main() {
   float ptNear = 0.0;                              // arc length (since the last crossing) at which the ray entered `prim`
   float tTotal = 0.0;                              // arc length accumulated over previous domain hops
   int hops = 0;
+  vec3 tint = vec3(1.0);                           // multiplicative tint from the faces crossed so far
 
   for (int step = 0; step < MAX_STEPS; ++step) {
     float trans = exp(logT);
@@ -213,7 +216,7 @@ void main() {
     if (dt > 0.0) {
       float delta = -sigma * dt;
       float alpha = 1.0 - exp(delta);
-      rgb += colour * alpha * trans;
+      rgb += colour * tint * alpha * trans;
       logT += delta;
       // G-buffer: record the first segment that takes the transmittance below 0.5 (median depth)
       if (!gotHit && exp(logT) < 0.5) {
@@ -232,6 +235,7 @@ void main() {
       if (hops >= uMaxHops) break;
       hops++;
       tTotal += tDom;
+      tint *= mix(vec3(1.0), uFaceTint[exitFace], uTintStrength);
       // transport the ray state through the pairing (points and tangents alike), re-normalise
       mat4 g = uFaceG[exitFace];
       vec4 x = geodesicK(k, o, v, tDom);

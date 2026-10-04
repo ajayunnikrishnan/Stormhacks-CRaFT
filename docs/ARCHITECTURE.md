@@ -488,3 +488,22 @@ renderer's output of the same cameras (target > 40 dB).
    now, and permission to retrain at the §9 budget.
 3. **Target GPU/OS** for the 30 FPS target, hours, team size.
 4. **D = 4 vs 8**: train both if GPU time allows.
+
+
+---
+
+## 13. As built (added after Phase 9)
+
+The plan above was executed with one change: the app is **TypeScript + WebGL2 (Vite)** instead
+of C++/Emscripten — same GLSL ES 3.00 shaders, same data-texture layout, no toolchain risk. The
+exporter follows §11 exactly (Steiner points, Morton sort, regular triangulation, fp16 attributes)
+and additionally ships the union adjacency over a curvature sweep (§3.5 of the writeup) and a
+box-sampled Steiner option for open scenes. Frame pipeline as built:
+
+```
+sv_prepass_curved (N·k texels)  →  walk_curved (MRT G-buffer: baked+T, hit, normal, meta)
+                                →  shadow (½ res, ≤4 lamps)  →  shade (Eq. 8, fog, tone map)
+```
+
+Per-κ variants of every curved shader are compiled with `#define KAPPA` so the branches fold.
+See docs/WRITEUP.md §§8, 11–14 for the numerical findings, validation and performance tables.

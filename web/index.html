@@ -23,7 +23,12 @@
     <div id="panel">
       <label class="big">curvature k <input id="curv" type="range" min="-1" max="1" step="0.001" value="0" /> <span id="curvV">0</span></label>
       <label><input id="mode" type="checkbox" checked /> curved renderer (unchecked = Phase 1 flat reference)</label>
+      <label>quality <select id="quality"><option value="auto" selected>auto (target 30 fps)</option><option value="low">low</option><option value="medium">medium</option><option value="high">high</option></select></label>
       <label>scale <input id="scale" type="range" min="0.25" max="1" step="0.05" value="1" /> <span id="scaleV">1.00</span></label>
+      <label>FOV <input id="fov" type="range" min="50" max="100" step="1" value="70" /> <span id="fovV">70°</span></label>
+      <label>mouse <input id="sens" type="range" min="0.5" max="3" step="0.1" value="1" /></label>
+      <label><input id="tints" type="checkbox" checked /> tint walls by face pair</label>
+      <button id="galleryBtn" style="margin:4px 0;background:#2a3050;color:#eee;border:0;padding:5px 10px;border-radius:6px;cursor:pointer">space gallery (G)</button>
       <label class="big">level <select id="level"></select></label>
       <label>space <select id="topo"></select></label>
       <label>camera <select id="cams"></select></label>

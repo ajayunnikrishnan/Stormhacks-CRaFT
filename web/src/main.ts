@@ -10,6 +10,7 @@ import { DOMAIN_IDS, makeDomain, type Domain, type DomainId } from "./topology/d
 import { Player } from "./game/player";
 import { Overlay } from "./ui/overlay";
 import { Hud } from "./ui/hud";
+import { Gallery, buildCards } from "./ui/gallery";
 import { LEVELS, LESSON_CARDS, examCurvature, examScore, type Level, type LevelState, type ToolId } from "./game/levels";
 import { LightMeter, scalarIrradiance, triangle } from "./game/tools";
 import { apply, inverse, v4, geodesic, tangentialize, embedPoint, logAtOrigin, type V4 } from "./geometry/space";
@@ -26,6 +27,7 @@ const modeEl = $<HTMLInputElement>("mode"), nearCullEl = $<HTMLInputElement>("ne
 const collideEl = $<HTMLInputElement>("collide");
 const lightEl = $<HTMLInputElement>("lighting"), ambientEl = $<HTMLInputElement>("ambient"), fogEl = $<HTMLInputElement>("fog"), audioEl = $<HTMLInputElement>("audio");
 const overlayCanvas = $<HTMLCanvasElement>("overlay");
+const qualityEl = $<HTMLSelectElement>("quality"), fovEl = $<HTMLInputElement>("fov"), fovV = $("fovV"), sensEl = $<HTMLInputElement>("sens"), tintsEl = $<HTMLInputElement>("tints");
 
 const params = new URLSearchParams(location.search);
 const sceneUrl = params.get("scene") ?? "scenes/synth_open/scene.json";
@@ -74,6 +76,18 @@ async function main() {
   const flatHalf: [number, number, number] = [(bb1[0] - bb0[0]) / 2, (bb1[1] - bb0[1]) / 2, (bb1[2] - bb0[2]) / 2];
   const horizExtent = Math.max(flatHalf[0], flatHalf[2]);
   const has = (t: ToolId) => level.env.tools.includes(t);
+  // quality presets (§5): render scale, shadow resolution, hop cap; "auto" adapts the scale to hit 30 fps
+  const PRESETS: Record<string, { scale: number; shadow: number; hops: number }> = { low: { scale: 0.5, shadow: 0.35, hops: 8 }, medium: { scale: 0.75, shadow: 0.5, hops: 12 }, high: { scale: 1, shadow: 0.5, hops: 16 } };
+  let autoScale = 1;
+  const applyQuality = () => {
+    const q = qualityEl.value;
+    if (q === "auto") { lighting.shadowScale = 0.5; renderer.maxHops = 12; }
+    else { const pr = PRESETS[q]; scaleEl.value = String(pr.scale); scaleV.textContent = pr.scale.toFixed(2); lighting.shadowScale = pr.shadow; renderer.maxHops = pr.hops; }
+  };
+  qualityEl.addEventListener("change", applyQuality);
+  fovEl.addEventListener("input", () => { isoCam.fovDeg = Number(fovEl.value); flyCam.fovDeg = isoCam.fovDeg; fovV.textContent = `${fovEl.value}°`; });
+  sensEl.addEventListener("input", () => { isoCam.sensitivity = Number(sensEl.value); });
+  tintsEl.addEventListener("change", () => { renderer.tintStrength = tintsEl.checked ? 0.35 : 0; });
 
   // ---------------------------------------------------------------- helpers
   const toModel = (m: [number, number, number]) => { const p = curvatureParams(k); return embedPoint(p.kappa, [(m[0] - renderer.centre[0]) * p.scale, (m[1] - renderer.centre[1]) * p.scale, (m[2] - renderer.centre[2]) * p.scale]); };
@@ -118,6 +132,28 @@ async function main() {
     gameHud.lesson(level.id === "sandbox" && id !== "none" ? LESSON_CARDS[id] : level.lesson || null);
   };
   const clearLights = () => { for (const l of lights.list) audio.remove(l.id); lights.list.length = 0; };
+  const gallery = new Gallery(document.body, buildCards(flatHalf), (id) => setTopology(id));
+  $("galleryBtn").addEventListener("click", () => { if (has("topology")) gallery.show(); });
+  /** Thumbnails: render each space from a fixed pose with our own renderer, then restore the state. */
+  const renderThumbnails = async () => {
+    const saveK = k, saveDomain = domain?.id ?? "none", saveWb = isoCam.Wb.slice(), savePitch = isoCam.pitch;
+    const lo: LightingOptions = { ...lighting, enabled: true, flashlight: true, ambient: 0.3, fogSigmaPerM: 0.03 };
+    for (const card of gallery.cards) {
+      setTopology(card.id as DomainId);
+      if (cameras.length) applyCamera(cameras[0]);
+      isoCam.yawBy(0.6);
+      lo.camFwdWorld = apply(isoCam.invW(), v4(0, 0, 0, -1));
+      const w = 128, h = 128;
+      const arr = renderer.renderLitToArray(isoState(1), opts(), lo, w, h);
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      const ctx = c.getContext("2d")!; const im = ctx.createImageData(w, h);
+      for (let i = 0; i < w * h; i++) { im.data[i * 4] = Math.min(255, arr[i * 3] * 255); im.data[i * 4 + 1] = Math.min(255, arr[i * 3 + 1] * 255); im.data[i * 4 + 2] = Math.min(255, arr[i * 3 + 2] * 255); im.data[i * 4 + 3] = 255; }
+      ctx.putImageData(im, 0, 0);
+      gallery.setThumb(card.id as DomainId, c.toDataURL("image/png"));
+      await new Promise((r) => setTimeout(r, 0));
+    }
+    setTopology(saveDomain as DomainId); setK(saveK); isoCam.Wb.set(saveWb); isoCam.pitch = savePitch; player.cell = -1;
+  };
 
   const startLevel = (lv: Level) => {
     level = lv;
@@ -166,8 +202,9 @@ async function main() {
 
   window.addEventListener("keydown", (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return;
-    if (e.code === "Escape") { paused = !paused; gameHud.showMenu(paused ? controlsHtml : null); return; }
-    if (paused) return;
+    if (e.code === "Escape") { if (gallery.visible) { gallery.hide(); return; } paused = !paused; gameHud.showMenu(paused ? controlsHtml : null); return; }
+    if (e.code === "KeyG" && has("topology")) { gallery.toggle(); return; }
+    if (paused || gallery.visible) return;
     const p = curvatureParams(k);
     if (e.code === "KeyL" && has("laser")) { laser = laser ? null : makeLaser(); if (laser) levelState.laserUsed = true; }
     if (e.code === "KeyM" && has("map")) overlay.showMap = !overlay.showMap;
@@ -237,6 +274,8 @@ async function main() {
     cellOf: (xM: number, yM: number, zM: number) => { const p = curvatureParams(k); const x = toModel([xM, yM, zM]); const kk = p.kappa === 0 ? 1 : p.kappa; let best = -1, bv = -Infinity; const A = renderer.curved.A; for (let c = 0, o = 0; o < A.length; c++, o += 4) { const vv = kk * A[o] * x[0] + A[o + 1] * x[1] + A[o + 2] * x[2] + A[o + 3] * x[3]; if (vv > bv) { bv = vv; best = c; } } return { cell: best, sigma: (player as unknown as { info: { sigma: Float32Array } }).info.sigma[best], R: renderer.curved.rad[2 * best] / p.scale }; },
     overlayPng: (w: number, h: number) => { const c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d")!.drawImage(overlayCanvas, 0, 0, w, h); return c.toDataURL("image/png").split(",")[1]; },
     stats: () => renderer.stats,
+    gallery: () => ({ cards: gallery.cards.map((c) => ({ id: c.id, name: c.name, badge: c.badge, svgLen: c.svg.length, thumb: gallery.thumbs.has(c.id as DomainId) })) }),
+    gallerySvg: (id: string) => gallery.cards.find((c) => c.id === id)?.svg,
     bench: (c: number, w: number, h: number, frames = 30, curved = false, kk = 0) => {
       if (!curved) return renderer.bench(repoCameraState(cameras[c]), opts(), w, h, frames);
       renderer.setCurvature(kk); const p = curvatureParams(kk); const cam = new IsoCamera(); cam.setFromRepoCamera(cameras[c], p.kappa, p.scale, renderer.centre);
@@ -248,6 +287,8 @@ async function main() {
   // ---------------------------------------------------------------- start
   startLevel(LEVELS.find((l) => l.id === (params.get("level") ?? "sandbox")) ?? LEVELS[LEVELS.length - 1]);
   status.remove();
+  applyQuality();
+  setTimeout(() => { renderThumbnails().catch((e) => console.warn("thumbnails", e)); }, 1500);
 
   let last = performance.now();
   let fpsAcc = 0, fpsN = 0, fps = 0, hopsCrossed = 0, lastMeterLamp = -1;
@@ -318,7 +359,15 @@ async function main() {
     }
     const cpuMs = performance.now() - t0;
     fpsAcc += dt; fpsN++;
-    if (fpsAcc > 0.5) { fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0; }
+    if (fpsAcc > 0.5) {
+      fps = fpsN / fpsAcc; fpsAcc = 0; fpsN = 0;
+      if (qualityEl.value === "auto" && modeEl.checked) {
+        // dynamic resolution (§5): aim for 30 fps; step the scale by ±10 % per half second
+        if (fps < 28 && autoScale > 0.4) autoScale = Math.max(0.4, autoScale * 0.9);
+        else if (fps > 50 && autoScale < 1) autoScale = Math.min(1, autoScale * 1.08);
+        scaleEl.value = autoScale.toFixed(2); scaleV.textContent = autoScale.toFixed(2);
+      }
+    }
     const s = renderer.stats;
     const posM = isoCam.physicalPos(p.kappa, p.scale, renderer.centre);
     hud.textContent =

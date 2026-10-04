@@ -24,6 +24,7 @@ export class IsoCamera {
   fovDeg = 70;
   /** metres per second in physical units; converted with the scene scale */
   speedMps = 2.0;
+  sensitivity = 1.0;
   /** Hooks so the Player can run collision (move) and transport the compass (yaw). */
   moveHook: ((dBody: number[]) => void) | null = null;
   yawHook: ((R: M4) => void) | null = null;
@@ -42,8 +43,8 @@ export class IsoCamera {
       if (!this.dragging) return;
       const dx = e.clientX - this.lastX, dy = e.clientY - this.lastY;
       this.lastX = e.clientX; this.lastY = e.clientY;
-      this.yawBy(dx * 0.003);
-      this.pitch = Math.max(-1.5, Math.min(1.5, this.pitch - dy * 0.003));
+      this.yawBy(dx * 0.003 * this.sensitivity);
+      this.pitch = Math.max(-1.5, Math.min(1.5, this.pitch - dy * 0.003 * this.sensitivity));
     });
   }
 

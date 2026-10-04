@@ -87,6 +87,9 @@ export class Renderer {
   private locate: LocateGrid | null = null;
   private texLoc: DataTexture;
   maxHops = 16;
+  /** in-world tint of light passing through each face pair (gallery colours); 0 disables */
+  tintStrength = 0.35;
+  static readonly PAIR_COLOURS: [number, number, number][] = [[1.0, 0.55, 0.45], [0.5, 0.85, 1.0], [0.7, 1.0, 0.55], [1.0, 0.85, 0.45], [0.85, 0.6, 1.0], [0.55, 1.0, 0.9]];
   /** set by the app so bench() can time the full lit pipeline */
   benchLighting: LightingOptions | null = null;
   /** Fog / step cutoff distance in metres (§3.9: fog also acts as the distance cutoff). */
@@ -142,7 +145,7 @@ export class Renderer {
   private bindDomain(p: Program) {
     const d = this.domain;
     const gl = this.gl;
-    if (!d || !this.locate) { p.u1i("uFaceCount", 0); p.u1i("uMaxHops", 0); p.tex("uLocGrid", 7, this.texLoc.tex); return; }
+    if (!d || !this.locate) { p.u1i("uFaceCount", 0); p.u1i("uMaxHops", 0); p.u1f("uTintStrength", 0); p.tex("uLocGrid", 7, this.texLoc.tex); return; }
     const n = d.faces.length;
     const W = new Float32Array(12 * 4), G = new Float32Array(12 * 16), L = new Float32Array(12 * 16), partner = new Int32Array(12), half = new Float32Array(12);
     for (let f = 0; f < n; f++) {
@@ -158,6 +161,10 @@ export class Renderer {
     gl.uniformMatrix4fv(p.loc("uFaceLocInv"), false, L);
     gl.uniform1iv(p.loc("uFacePartner"), partner);
     gl.uniform1fv(p.loc("uFaceChartHalf"), half);
+    const tint = new Float32Array(12 * 3);
+    for (let f = 0; f < n; f++) tint.set(Renderer.PAIR_COLOURS[Math.floor(f / 2) % Renderer.PAIR_COLOURS.length], f * 3);
+    gl.uniform3fv(p.loc("uFaceTint"), tint);
+    p.u1f("uTintStrength", this.tintStrength);
     p.u1i("uFaceCount", n);
     p.u1i("uMaxHops", this.maxHops);
     p.tex("uLocGrid", 7, this.texLoc.tex);

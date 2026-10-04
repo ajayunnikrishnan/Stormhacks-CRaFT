@@ -214,7 +214,32 @@ Baked-output parity (curved κ=0 vs flat) after the G-buffer refactor: 80.8 dB.
 | light meter ordering: H³ below 1/d², S³ above, E³ exact | pass |
 | in-browser level flow: tutorial completes; exam with a 10 %-off guess scores 90; level 3: lamp at edge 0.026, at antipode 2.6e4, 0.5 m off 2.6, 1.5 m off 0.30 W/m² | pass |
 
-## Next — Phase 8: polish (tints, topology gallery, quality presets, comfort), then Phase 9 docs.
+## Phase 8 — Polish — DONE
+- In-world face-pair tints (walker multiplies light through each face pair by the gallery colour,
+  toggleable); topology gallery (G): per-space card with a gluing diagram generated at runtime
+  from the domain's actual vertices/faces/pairings (twist angle or flip glyph on the visible face
+  of each pair) and a thumbnail rendered by our own renderer; curvature badge, orientability, hint.
+- Quality presets Low/Medium/High (render scale, shadow resolution, hop cap) and **auto** mode
+  that adapts the render scale to hold 30 fps; FOV and mouse-sensitivity sliders; pause menu.
+- Art: dark world, warm lamps, fog colour, Reinhard tone map, lamp glows (from Phase 6).
+- Verified in-browser: all 9 cards have diagrams + thumbnails; 36°/108°/180° labels and the
+  Klein flip glyph present; tints change the tiled render; auto quality settled at 0.6 scale /
+  42 fps on the M1 Pro at 2048×1536.
+
+## Phase 9 — Documentation & demo — DONE (video pending: needs a visible screen)
+- `docs/WRITEUP.md`: models, linear-bisector argument, closed-form intersections, direction
+  transport, falloff from sphere area, Gauss–Bonnet + holonomy, numerical findings, architecture,
+  validation table, performance table, limitations (Killing–Hopf), prior art, the exact
+  rasterisation bonus result; figures from `tools/make_figures.py` in `docs/figures/`.
+- `docs/DEMO_SCRIPT.md` (2–3 min live script), `README.md` (run / deploy / checkpoint drop-in),
+  `docs/ARCHITECTURE.md` as-built addendum, `.github/workflows/pages.yml` (tests + static build).
+- Exported scene binaries are now tracked so the Pages build is self-contained (11 MB).
+
+## Still open
+- PSNR of the GPU walk against the repo's own Warp kernel on a **trained** scene: needs a CUDA
+  machine and a checkpoint (`README.md` → "Using a trained Power Foam checkpoint").
+- Cut per the prompt's cut order: level 5 (topology identification) and SnapPy census manifolds.
+- Backup demo video: record `docs/DEMO_SCRIPT.md` on a machine with a visible browser.
 
 ## Known issues
 - Curved walker ~1.3× slower than the flat shader on the E³ path (generic 4D math); S³ ~2×.
