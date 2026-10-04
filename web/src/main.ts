@@ -246,7 +246,8 @@ async function main() {
     b.innerHTML = `<b>${sc.name}</b><small>${sc.desc}</small>`;
     b.addEventListener("click", () => { if (sc.url === sceneUrl) return; const q = new URLSearchParams(location.search); q.set("scene", sc.id); location.search = q.toString(); });
     scenesEl.appendChild(b);
-    if (sc.url !== sceneUrl) fetch(sc.url, { method: "HEAD" }).then((r) => { if (!r.ok) throw 0; }).catch(() => { b.disabled = true; b.querySelector("small")!.textContent = "not exported yet"; });
+    // dev servers answer missing paths with index.html, so require a JSON content type
+    if (sc.url !== sceneUrl) fetch(sc.url, { method: "HEAD" }).then((r) => { if (!r.ok || !(r.headers.get("content-type") ?? "").includes("json")) throw 0; }).catch(() => { b.disabled = true; b.querySelector("small")!.textContent = "not exported yet"; });
   }
 
   window.addEventListener("keydown", (e) => {
