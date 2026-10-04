@@ -25,16 +25,23 @@ export async function loadScene(gl: WebGL2RenderingContext, url: string, onProgr
   const base = url.replace(/\/[^/]*$/, "/");
   const manifest = (await (await fetch(url)).json()) as SceneManifest;
   onProgress?.(`fetching ${(manifest.bin_bytes / 1e6).toFixed(1)} MB`);
-  // Scenes over GitHub's 100 MB file limit are committed gzipped (scene.bin.gz); decompress in the
-  // browser when the raw file is not served.
+  // Scenes over GitHub's 100 MB file limit are committed gzipped as scene.gz.bin (NOT .gz: servers
+  // treat that extension as a pre-compressed asset and add Content-Encoding, which breaks fetch in
+  // some browsers). Fall back to it when the raw file is missing and gunzip by magic bytes.
   let res = await fetch(base + manifest.bin);
   let buf: ArrayBuffer;
   if (res.ok && !(res.headers.get("content-type") ?? "").includes("text/html")) buf = await res.arrayBuffer();
   else {
-    res = await fetch(base + manifest.bin + ".gz");
-    if (!res.ok || !res.body) throw new Error(`scene data not found: ${base + manifest.bin}(.gz)`);
-    const ds = new DecompressionStream("gzip");
-    buf = await new Response(res.body.pipeThrough(ds)).arrayBuffer();
+    const gzUrl = base + manifest.bin.replace(/\.bin$/, ".gz.bin");
+    onProgress?.(`fetching compressed scene`);
+    res = await fetch(gzUrl);
+    if (!res.ok) throw new Error(`scene data not found: ${base + manifest.bin} / ${gzUrl}`);
+    buf = await res.arrayBuffer();
+    const head = new Uint8Array(buf, 0, 2);
+    if (head[0] === 0x1f && head[1] === 0x8b) {
+      onProgress?.("decompressing");
+      buf = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+    }
   }
   const a = parseScene(manifest, buf);
   const { n, k, d } = a;
